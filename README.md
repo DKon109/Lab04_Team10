@@ -110,7 +110,7 @@ Possible future features include an automatic waitlist, controlled ticket transf
 
 - **Front end:** React
 - **Back end:** Java and Spring Boot
-- **Database:** PostgreSQL with Spring Data JPA
+- **Database:** MySQL with Spring Data JPA
 - **Security:** Spring Security
 - **Live updates:** Server-Sent Events
 - **Payment:** Hosted checkout in sandbox mode
