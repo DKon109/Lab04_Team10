@@ -10,6 +10,7 @@ public class PasswordEncoderConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
+        // BCrypt salts each hash automatically, so identical passwords do not look identical.
         return new BCryptPasswordEncoder();
     }
 }
