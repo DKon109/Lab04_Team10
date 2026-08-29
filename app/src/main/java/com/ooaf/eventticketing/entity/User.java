@@ -21,12 +21,15 @@ public class User {
     private String email;
 
     @Column(nullable = false, length = 255)
+    // Never store or expose a user's raw password.
     private String passwordHash;
 
+    // Store the enum name rather than its numeric position so reordering roles is safe.
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private UserRole role;
 
+    // Required by JPA when reconstructing an entity from a database row.
     protected User() {
     }
 
