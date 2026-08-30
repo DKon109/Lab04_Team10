@@ -14,6 +14,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.Optional;
 
 @Service
 public class TokenService {
@@ -55,6 +56,20 @@ public class TokenService {
                 "Bearer",
                 TOKEN_LIFETIME_SECONDS
         );
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<User> findUserByRawToken(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            return Optional.empty();
+        }
+
+        String tokenHash = hashToken(rawToken);
+
+        return tokenRepository.findByTokenHash(tokenHash)
+                .filter(token ->
+                        !token.isExpired(Instant.now()))
+                .map(AuthenticationToken::getUser);
     }
 
     private String generateRawToken() {
