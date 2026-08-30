@@ -14,12 +14,13 @@ public class SecurityConfig {
             HttpSecurity http
     ) throws Exception {
         http
-                // This API will use authentication tokens instead of browser sessions.
+                // This API uses authentication tokens instead of browser sessions.
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 HttpMethod.POST,
-                                "/api/auth/register"
+                                "/api/auth/register",
+                                "/api/auth/login"
                         ).permitAll()
                         .requestMatchers(
                                 HttpMethod.GET,
