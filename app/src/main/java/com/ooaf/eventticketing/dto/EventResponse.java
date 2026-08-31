@@ -25,11 +25,15 @@ public class EventResponse {
     Integer likeCount;
 
     public static EventResponse fromEntity(Event event) {
+        return fromEntity(event, false, null);
+    }
+
+    public static EventResponse fromEntity(Event event, boolean likedByMe, Integer likeCount) {
         return new EventResponse(
                 event.getId(), event.getTitle(), event.getDescription(), event.getImageUrl(),
                 event.getDateTime(), event.getVenue(), event.getCity(), event.getUniversity(),
                 event.getOrganiserName(), event.getOrganiserType(), event.getCategory(),
-                event.getTags(), false, null
+                event.getTags(), likedByMe, likeCount
         );
     }
 }

@@ -48,6 +48,17 @@ public class SecurityConfig {
                                 "/api/auth/register",
                                 "/api/auth/login"
                         ).permitAll()
+                        // Personalised feed needs a user; must be matched
+                        // before the broader anonymous GET /api/events/**.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/events/for-you"
+                        ).authenticated()
+                        // Only organiser accounts may post events.
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/events"
+                        ).hasRole("COMMITTEE_MEMBER")
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/events/**"
