@@ -49,8 +49,6 @@ public class Event {
     @CollectionTable(name = "event_tags", joinColumns = @JoinColumn(name = "event_id"))
     @Column(name = "tag")
     private List<String> tags = new ArrayList<>();
-    protected Event() {
-    }
 
     public Event(String title, String description, String imageUrl, LocalDateTime dateTime,
                  String venue, String city, String university, String organiserName,
