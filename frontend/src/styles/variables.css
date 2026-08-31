@@ -1,0 +1,24 @@
+:root {
+  /* Tixora palette: off-white ground, dark navy ink, energetic yellow accent */
+  --bg: #fffdf5;
+  --surface: #ffffff;
+  --ink: #1b2340;
+  --ink-soft: #4c5470;
+  --ink-faint: #8a90a8;
+  --line: #ece7d8;
+  --accent: #ffc71f;
+  --accent-soft: #fff3cc;
+  --accent-strong: #e8ae00;
+  --like: #e5484d;
+  --danger: #c62f36;
+  --danger-soft: #fdeceb;
+  --success: #1d7a44;
+  --success-soft: #e8f6ee;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(27, 35, 64, 0.08), 0 6px 18px rgba(27, 35, 64, 0.06);
+  --shadow-lift: 0 4px 10px rgba(27, 35, 64, 0.1), 0 12px 28px rgba(27, 35, 64, 0.1);
+  --focus-ring: 0 0 0 3px rgba(232, 174, 0, 0.55);
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+}
