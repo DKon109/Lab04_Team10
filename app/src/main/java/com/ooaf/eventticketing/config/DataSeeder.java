@@ -2,8 +2,13 @@ package com.ooaf.eventticketing.config;
 
 import com.ooaf.eventticketing.entity.Event;
 import com.ooaf.eventticketing.entity.OrganiserType;
+import com.ooaf.eventticketing.entity.User;
+import com.ooaf.eventticketing.entity.UserRole;
 import com.ooaf.eventticketing.repository.EventRepository;
+import com.ooaf.eventticketing.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -24,13 +29,29 @@ import java.util.List;
 public class DataSeeder implements CommandLineRunner {
 
     private final EventRepository eventRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public DataSeeder(EventRepository eventRepository) {
+    /**
+     * Demo-only organiser login for the Sprint 1 organiser dashboard, since
+     * public registration only creates STUDENT accounts. Override the
+     * password with DEMO_ORGANISER_PASSWORD; remove this seed before any
+     * real deployment.
+     */
+    @Value("${DEMO_ORGANISER_PASSWORD:OrganiserDemo1!}")
+    private String demoOrganiserPassword;
+
+    public DataSeeder(EventRepository eventRepository,
+                      UserRepository userRepository,
+                      PasswordEncoder passwordEncoder) {
         this.eventRepository = eventRepository;
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     public void run(String... args) {
+        seedDemoOrganiser();
         if (eventRepository.count() > 0) {
             return;
         }
@@ -195,5 +216,16 @@ public class DataSeeder implements CommandLineRunner {
                         "Festival", List.of("fireworks", "nye"))
         );
         eventRepository.saveAll(events);
+    }
+
+    private void seedDemoOrganiser() {
+        String email = "organiser@tixora.demo";
+        if (!userRepository.existsByEmail(email)) {
+            userRepository.save(new User(
+                    email,
+                    passwordEncoder.encode(demoOrganiserPassword),
+                    UserRole.COMMITTEE_MEMBER
+            ));
+        }
     }
 }
