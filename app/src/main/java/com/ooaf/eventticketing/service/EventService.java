@@ -11,30 +11,36 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 public class EventService {
     private final EventRepository eventRepository;
+    private final LikeService likeService;
 
-    public EventService(EventRepository eventRepository) {
+    public EventService(EventRepository eventRepository, LikeService likeService) {
         this.eventRepository = eventRepository;
+        this.likeService = likeService;
     }
 
     public List<EventResponse> listEvents(String scope, OrganiserType organiserType, String category,
-                                          LocalDate date, boolean includePast) {
+                                          LocalDate date, boolean includePast, String currentUserEmail) {
+        Set<Long> likedIds = likeService.likedEventIds(currentUserEmail);
+        Map<Long, Long> counts = likeService.likeCounts();
         return eventRepository.findAllByOrderByDateTimeAsc().stream()
                 .filter(event -> matches(event, scope, organiserType, category, date, includePast))
-                .map(EventResponse::fromEntity)
-                // TODO(Member 5 integration): once the Like repository exists, look up the
-                // current user's liked event IDs here and return updated EventResponses with
-                // likedByMe/likeCount set, instead of the defaults from fromEntity().
+                .map(event -> EventResponse.fromEntity(event, likedIds.contains(event.getId()),
+                        counts.getOrDefault(event.getId(), 0L)))
                 .toList();
     }
 
-    public EventResponse getEvent(Long id) {
+    public EventResponse getEvent(Long id, String currentUserEmail) {
         Event event = eventRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found: " + id));
-        return EventResponse.fromEntity(event);
+        boolean liked = likeService.likedEventIds(currentUserEmail).contains(id);
+        long count = likeService.likeCounts().getOrDefault(id, 0L);
+        return EventResponse.fromEntity(event, liked, count);
     }
 
     private boolean matches(Event event, String scope, OrganiserType organiserType,
