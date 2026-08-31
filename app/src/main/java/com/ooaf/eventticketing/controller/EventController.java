@@ -17,8 +17,7 @@ public class EventController {
     public EventController(EventService eventService) {
         this.eventService = eventService;
     }
-    /**
-     * Examples:
+    /*
      *   GET /api/events                       -> all upcoming Sydney events
      *   GET /api/events?scope=USYD             -> upcoming USYD events only
      *   GET /api/events?organiserType=SOCIETY  -> upcoming society-run events
