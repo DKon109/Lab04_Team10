@@ -4,6 +4,7 @@ import com.ooaf.eventticketing.dto.EventResponse;
 import com.ooaf.eventticketing.entity.OrganiserType;
 import com.ooaf.eventticketing.service.EventService;
 import com.ooaf.eventticketing.service.LikeService;
+import com.ooaf.eventticketing.service.RecommendationService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -17,10 +18,13 @@ import java.util.List;
 public class EventController {
     private final EventService eventService;
     private final LikeService likeService;
+    private final RecommendationService recommendationService;
 
-    public EventController(EventService eventService, LikeService likeService) {
+    public EventController(EventService eventService, LikeService likeService,
+                           RecommendationService recommendationService) {
         this.eventService = eventService;
         this.likeService = likeService;
+        this.recommendationService = recommendationService;
     }
     /**
      * Examples:
@@ -56,6 +60,12 @@ public class EventController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unlike(@PathVariable Long eventId, Authentication authentication) {
         likeService.unlike(authentication.getName(), eventId);
+    }
+
+    @GetMapping("/for-you")
+    public List<EventResponse> forYou(@RequestParam(required = false) String scope,
+                                      Authentication authentication) {
+        return recommendationService.recommendations(authentication.getName(), scope);
     }
 
     private String optionalEmail(Authentication authentication) {
