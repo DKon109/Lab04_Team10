@@ -24,7 +24,6 @@ public class EventController {
         this.eventService = eventService;
         this.likeService = likeService;
     }
-
     /**
      * Examples:
      *   GET /api/events                       -> all upcoming Sydney events
