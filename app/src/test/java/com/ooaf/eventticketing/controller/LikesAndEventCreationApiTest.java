@@ -137,7 +137,12 @@ class LikesAndEventCreationApiTest {
                         .header("Authorization", "Bearer " + studentToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validEventJson()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message")
+                        .value("You do not have permission to perform this action"))
+                .andExpect(jsonPath("$.path").value("/api/events"));
     }
 
     @Test

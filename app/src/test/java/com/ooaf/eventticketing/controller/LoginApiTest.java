@@ -85,7 +85,12 @@ class LoginApiTest {
                                   "password": "IncorrectPassword123!"
                                 }
                                 """))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message")
+                        .value("Invalid email or password"))
+                .andExpect(jsonPath("$.path").value("/api/auth/login"));
     }
 
     @Test
@@ -98,7 +103,12 @@ class LoginApiTest {
                                   "password": "StrongPassword123!"
                                 }
                                 """))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message")
+                        .value("Invalid email or password"))
+                .andExpect(jsonPath("$.path").value("/api/auth/login"));
     }
 
     @Test

@@ -40,7 +40,11 @@ class CurrentUserApiTest {
     @Test
     void rejectsRequestWithoutToken() throws Exception {
         mockMvc.perform(get("/api/auth/me"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Authentication is required"))
+                .andExpect(jsonPath("$.path").value("/api/auth/me"));
     }
 
     @Test
@@ -50,7 +54,12 @@ class CurrentUserApiTest {
                                 HttpHeaders.AUTHORIZATION,
                                 "Bearer invalid-token"
                         ))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Authentication is required"))
+                .andExpect(jsonPath("$.path").value("/api/auth/me"));
+
     }
 
     @Test
