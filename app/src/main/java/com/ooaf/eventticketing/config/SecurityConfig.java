@@ -7,7 +7,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import jakarta.servlet.http.HttpServletResponse;
+import com.ooaf.eventticketing.dto.ApiErrorResponse;
+import com.ooaf.eventticketing.exception.ApiErrorResponseWriter;
 
 @Configuration
 public class SecurityConfig {
@@ -15,12 +16,17 @@ public class SecurityConfig {
     private final BearerTokenAuthenticationFilter
             bearerTokenAuthenticationFilter;
 
+    private final ApiErrorResponseWriter apiErrorResponseWriter;
+
     public SecurityConfig(
             BearerTokenAuthenticationFilter
-                    bearerTokenAuthenticationFilter
+                    bearerTokenAuthenticationFilter,
+            ApiErrorResponseWriter
+                    apiErrorResponseWriter
     ) {
         this.bearerTokenAuthenticationFilter =
                 bearerTokenAuthenticationFilter;
+        this.apiErrorResponseWriter = apiErrorResponseWriter;
     }
 
     @Bean
@@ -39,9 +45,26 @@ public class SecurityConfig {
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(
                                 (request, response, exception) ->
-                                        response.sendError(
-                                                HttpServletResponse
-                                                        .SC_UNAUTHORIZED
+                                        apiErrorResponseWriter.write(
+                                                response,
+                                                new ApiErrorResponse(
+                                                        401,
+                                                        "Unauthorized",
+                                                        "Authentication is required",
+                                                        request.getRequestURI()
+                                                )
+                                        )
+                        )
+                        .accessDeniedHandler(
+                                (request, response, exception) ->
+                                        apiErrorResponseWriter.write(
+                                                response,
+                                                new ApiErrorResponse(
+                                                        403,
+                                                        "Forbidden",
+                                                        "You do not have permission to perform this action",
+                                                        request.getRequestURI()
+                                                )
                                         )
                         ))
                 .authorizeHttpRequests(auth -> auth

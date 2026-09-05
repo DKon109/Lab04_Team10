@@ -94,7 +94,12 @@ class RegistrationApiTest {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message")
+                        .value("Email is already registered"))
+                .andExpect(jsonPath("$.path").value("/api/auth/register"));
     }
     @Test
     void rejectsMissingEmail() throws Exception {
@@ -106,8 +111,11 @@ class RegistrationApiTest {
                             }
                             """))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
                 .andExpect(jsonPath("$.message")
                         .value("Validation failed"))
+                .andExpect(jsonPath("$.path").value("/api/auth/register"))
                 .andExpect(jsonPath("$.errors.email")
                         .value("Email is required"));
     }
