@@ -28,6 +28,8 @@ public class SecurityConfig {
             HttpSecurity http
     ) throws Exception {
         http
+                // Use the CORS policy defined by CorsConfigurationSource.
+                .cors(cors -> {})
                 // This API uses authentication tokens instead of browser sessions.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session
