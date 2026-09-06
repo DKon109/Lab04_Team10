@@ -66,7 +66,7 @@ public class LikeService {
 
     @Transactional(readOnly = true)
     public Set<Long> likedEventIds(String email) {
-        if (email == null) {
+        if (email == null || email.isBlank()) {
             return Set.of();
         }
         return likedEventEntities(email).stream().map(Event::getId).collect(Collectors.toSet());
@@ -79,6 +79,9 @@ public class LikeService {
     }
 
     private User findUser(String email) {
+        if (email == null || email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
         return userRepository.findByEmail(email).orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.UNAUTHORIZED, "Authenticated user no longer exists"));
     }

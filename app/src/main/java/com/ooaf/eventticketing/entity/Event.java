@@ -1,6 +1,7 @@
 package com.ooaf.eventticketing.entity;
 
 import jakarta.persistence.*;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -8,6 +9,7 @@ import java.util.List;
 
 @Entity
 @Table(name = "events")
+@NoArgsConstructor
 public class Event {
 
     @Id
@@ -28,16 +30,9 @@ public class Event {
     @Column(nullable = false)
     private String venue;
 
-    /**
-     * City the event is held in, e.g. "Sydney". Used for the "All Sydney" scope.
-     */
     @Column(nullable = false)
     private String city;
 
-    /**
-     * University the event belongs to, e.g. "USYD". Null/blank for a general
-     * Sydney-wide (non-university) event, so it only shows up under "All Sydney".
-     */
     private String university;
 
     @Column(nullable = false)
@@ -54,8 +49,6 @@ public class Event {
     @CollectionTable(name = "event_tags", joinColumns = @JoinColumn(name = "event_id"))
     @Column(name = "tag")
     private List<String> tags = new ArrayList<>();
-    protected Event() {
-    }
 
     public Event(String title, String description, String imageUrl, LocalDateTime dateTime,
                  String venue, String city, String university, String organiserName,

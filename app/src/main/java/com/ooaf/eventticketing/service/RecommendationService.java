@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -47,8 +48,9 @@ public class RecommendationService {
                 .thenComparing(Event::getDateTime)
                 .thenComparing(Event::getId);
 
+        LocalDateTime now = LocalDateTime.now();
         return eventRepository.findAll().stream()
-                .filter(event -> event.getDateTime().isAfter(LocalDateTime.now()))
+                .filter(event -> !event.getDateTime().isBefore(now))
                 .filter(event -> matchesScope(event, scope))
                 .filter(event -> !likedIds.contains(event.getId()))
                 .sorted(ranking)
@@ -84,7 +86,7 @@ public class RecommendationService {
 
     private static Set<String> normalisedTags(Event event) {
         Set<String> result = new HashSet<>();
-        event.getTags().forEach(tag -> result.add(tag.toLowerCase()));
+        event.getTags().forEach(tag -> result.add(tag.toLowerCase(Locale.ROOT)));
         return result;
     }
 
