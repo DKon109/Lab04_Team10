@@ -50,7 +50,10 @@ class RegistrationApiTest {
                 .andExpect(jsonPath("$.email")
                         .value("new.student@uni.sydney.edu.au"))
                 .andExpect(jsonPath("$.role")
-                        .value("STUDENT"));
+                        .value("STUDENT"))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+
 
         User savedUser = userRepository
                 .findByEmail("new.student@uni.sydney.edu.au")
@@ -76,6 +79,7 @@ class RegistrationApiTest {
                             }
                             """))
                 .andExpect(status().isBadRequest());
+
     }
     @Test
     void rejectsDuplicateEmail() throws Exception {
