@@ -1,32 +1,32 @@
 package com.ooaf.eventticketing.entity;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Id;
-import jakarta.persistence.IdClass;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
+
+import java.time.Instant;
 
 /**
- * Junction entity recording that a user likes an event.
- *
- * The composite primary key guarantees that a user can like an event only once.
+ * A user's like on an event. One row per (user, event) pair; liking is
+ * idempotent at the service layer and backed by a unique constraint here.
  */
 @Entity
-@Table(name = "event_likes")
-@IdClass(EventLikeId.class)
+@Table(name = "event_likes",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "event_id"}))
 public class EventLike {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Id
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "event_id", nullable = false)
     private Event event;
+
+    @Column(nullable = false)
+    private Instant createdAt;
 
     protected EventLike() {
     }
@@ -34,6 +34,11 @@ public class EventLike {
     public EventLike(User user, Event event) {
         this.user = user;
         this.event = event;
+        this.createdAt = Instant.now();
+    }
+
+    public Long getId() {
+        return id;
     }
 
     public User getUser() {
@@ -42,5 +47,9 @@ public class EventLike {
 
     public Event getEvent() {
         return event;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
     }
 }

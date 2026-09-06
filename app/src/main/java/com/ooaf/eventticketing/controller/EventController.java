@@ -1,10 +1,12 @@
 package com.ooaf.eventticketing.controller;
 
+import com.ooaf.eventticketing.dto.CreateEventRequest;
 import com.ooaf.eventticketing.dto.EventResponse;
 import com.ooaf.eventticketing.entity.OrganiserType;
 import com.ooaf.eventticketing.service.EventService;
 import com.ooaf.eventticketing.service.LikeService;
 import com.ooaf.eventticketing.service.RecommendationService;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -18,6 +20,7 @@ import java.util.List;
 public class EventController {
     private final EventService eventService;
     private final LikeService likeService;
+
     private final RecommendationService recommendationService;
 
     public EventController(EventService eventService, LikeService likeService,
@@ -42,33 +45,41 @@ public class EventController {
             @RequestParam(defaultValue = "false") boolean includePast,
             Authentication authentication) {
         return eventService.listEvents(scope, organiserType, category, date, includePast,
-                optionalEmail(authentication));
+                emailOf(authentication));
+    }
+
+    /** Personalised feed; requires authentication (enforced in SecurityConfig). */
+    @GetMapping("/for-you")
+    public List<EventResponse> forYou(@RequestParam(required = false) String scope,
+                                      Authentication authentication) {
+        return recommendationService.recommendations(emailOf(authentication), scope);
     }
 
     @GetMapping("/{eventId}")
     public EventResponse getEvent(@PathVariable Long eventId, Authentication authentication) {
-        return eventService.getEvent(eventId, optionalEmail(authentication));
+        return eventService.getEvent(eventId, emailOf(authentication));
     }
 
     @PostMapping("/{eventId}/like")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void like(@PathVariable Long eventId, Authentication authentication) {
-        likeService.like(authentication.getName(), eventId);
+        likeService.like(emailOf(authentication), eventId);
     }
 
     @DeleteMapping("/{eventId}/like")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unlike(@PathVariable Long eventId, Authentication authentication) {
-        likeService.unlike(authentication.getName(), eventId);
+        likeService.unlike(emailOf(authentication), eventId);
     }
 
-    @GetMapping("/for-you")
-    public List<EventResponse> forYou(@RequestParam(required = false) String scope,
-                                      Authentication authentication) {
-        return recommendationService.recommendations(authentication.getName(), scope);
+    /** Organiser-only event posting (role enforced in SecurityConfig). */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public EventResponse createEvent(@Valid @RequestBody CreateEventRequest request) {
+        return eventService.createEvent(request);
     }
 
-    private String optionalEmail(Authentication authentication) {
+    private String emailOf(Authentication authentication) {
         return authentication == null ? null : authentication.getName();
     }
 }

@@ -1,7 +1,7 @@
 package com.ooaf.eventticketing.controller;
 
 import com.ooaf.eventticketing.dto.EventResponse;
-import com.ooaf.eventticketing.service.LikeService;
+import com.ooaf.eventticketing.service.EventService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,17 +10,17 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/users/me")
+@RequestMapping("/api/users")
 public class UserController {
 
-    private final LikeService likeService;
+    private final EventService eventService;
 
-    public UserController(LikeService likeService) {
-        this.likeService = likeService;
+    public UserController(EventService eventService) {
+        this.eventService = eventService;
     }
 
-    @GetMapping("/liked-events")
+    @GetMapping("/me/liked-events")
     public List<EventResponse> likedEvents(Authentication authentication) {
-        return likeService.likedEvents(authentication.getName());
+        return eventService.likedEvents(authentication.getName());
     }
 }
