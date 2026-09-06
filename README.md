@@ -14,6 +14,8 @@
 > run it and [`INTEGRATION_NOTES.md`](INTEGRATION_NOTES.md) for the current
 > API contract and gaps.
 
+See [Authentication API](AUTH_API.md) for registration, login, current-user endpoints, request/response examples, and authentication errors.
+
 ## Overview
 
 Tixora is a campus-first event ticketing and venue-entry platform built for university societies. It allows society committees to publish events, offer member and non-member tickets, manage allocated seating, take payments, issue QR e-tickets and monitor attendance through one system.

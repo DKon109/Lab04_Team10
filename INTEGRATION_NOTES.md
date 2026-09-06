@@ -3,6 +3,9 @@
 Snapshot of where integration stands so the backend and frontend halves of the
 team know exactly what is wired up and what remains.
 
+See [Authentication API](AUTH_API.md) for registration, login,
+current-user requests and responses, authentication errors, and CORS settings.
+
 ## Endpoints confirmed working in this repo (all verified with tests)
 
 | Endpoint | Auth | Notes |
@@ -31,9 +34,6 @@ real `likedByMe`/`likeCount`.
   placeholder until this exists.
 - Organiser self-service accounts — registration only creates `STUDENT`
   users; organiser access uses the seeded demo account below.
-- CORS configuration — the frontend relies on the Vite dev proxy; deploying
-  the frontend on a different origin needs a CORS config or same-origin
-  serving.
 - Event editing/deletion for organisers.
 
 ## Blockers for the backend team
@@ -42,7 +42,9 @@ real `likedByMe`/`likeCount`.
    (override via `DEMO_ORGANISER_PASSWORD` env var) is seeded by `DataSeeder`
    so the organiser dashboard is demoable. Decide the real
    organiser-onboarding story and remove this seed before anything public.
-2. **CORS or same-origin deployment** decision before any non-dev deploy.
+2. **Deployment origin configuration** — CORS is implemented. For a frontend
+    that calls the backend directly from a different origin, set
+    `TIXORA_CORS_ALLOWED_ORIGIN` to that frontend origin.
 3. `spring.jpa.hibernate.ddl-auto=update` creates the new `event_likes`
    table automatically; if you manage schema manually, mirror it
    (unique `(user_id, event_id)`, FKs to `users`/`events`, `created_at`).
