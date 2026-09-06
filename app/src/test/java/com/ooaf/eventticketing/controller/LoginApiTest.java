@@ -63,7 +63,9 @@ class LoginApiTest {
                 .andExpect(jsonPath("$.tokenType")
                         .value("Bearer"))
                 .andExpect(jsonPath("$.expiresInSeconds")
-                        .value(3600));
+                        .value(3600))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
 
         assertEquals(1, tokenRepository.count());
     }
