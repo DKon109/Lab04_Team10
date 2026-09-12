@@ -1,0 +1,49 @@
+.step-track {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+
+.step-dot {
+  width: 44px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  transition: background 0.15s ease;
+}
+
+.step-dot.done {
+  background: var(--accent);
+}
+
+.step-dot.current {
+  background: var(--accent-strong);
+}
+
+.wizard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.wizard-preview {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 4px;
+}
+
+.wizard-preview-card {
+  width: 100%;
+  max-width: 340px;
+}
+
+.panel > .field:last-of-type {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .wizard-preview {
+    padding: 8px 0;
+  }
+}
