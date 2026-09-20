@@ -27,6 +27,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.ooaf.eventticketing.entity.EventStatus;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -154,6 +156,12 @@ class LikesAndEventCreationApiTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("Trivia Night"))
                 .andExpect(jsonPath("$.city").value("Sydney"));
+        Event created = eventRepository.findAll().stream().filter(event ->
+                "Trivia Night".equals(event.getTitle())).findFirst().orElseThrow();
+        assertEquals("organiser@test.local",
+                created.getOwner().getEmail()
+        );
+        assertEquals(EventStatus.DRAFT, created.getStatus());
     }
 
     @Test
@@ -164,6 +172,43 @@ class LikesAndEventCreationApiTest {
                         .content("{\"title\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.title").exists());
+    }
+
+    @Test
+    void organiserEventsRequireAuthentication() throws Exception {
+        mockMvc.perform(get("/api/organiser/events"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void studentCannotListOrganiserEvents() throws Exception {
+        mockMvc.perform(get("/api/organiser/events")
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void organiserCanListOnlyOwnEvents() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        techEvent.setOwner(owner);
+        eventRepository.saveAndFlush(techEvent);
+
+        User otherOwner = userRepository.save(new User(
+                "other-organiser@test.local",
+                passwordEncoder.encode("password123"),
+                UserRole.COMMITTEE_MEMBER
+        ));
+
+        similarTechEvent.setOwner(otherOwner);
+        eventRepository.saveAndFlush(similarTechEvent);
+
+        mockMvc.perform(get("/api/organiser/events")
+                        .header("Authorization", "Bearer " + organiserToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(techEvent.getId()));
     }
 
     private String validEventJson() {
@@ -181,4 +226,5 @@ class LikesAndEventCreationApiTest {
                 }
                 """.formatted(LocalDateTime.now().plusDays(3).withNano(0));
     }
+
 }
