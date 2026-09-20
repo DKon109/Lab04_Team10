@@ -40,12 +40,8 @@ public class EventService {
         return withLikeInfo(List.of(event), userEmail).get(0);
     }
 
-    public List<EventResponse> forYou(String userEmail) {
-        return withLikeInfo(likeService.forYou(userEmail), userEmail);
-    }
-
     public List<EventResponse> likedEvents(String userEmail) {
-        return withLikeInfo(likeService.likedEvents(userEmail), userEmail);
+        return likeService.likedEvents(userEmail);
     }
 
     public EventResponse createEvent(CreateEventRequest request) {
@@ -65,12 +61,12 @@ public class EventService {
     /** Decorates events with the caller's likedByMe flags and real like counts. */
     private List<EventResponse> withLikeInfo(List<Event> events, String userEmail) {
         Set<Long> likedIds = likeService.likedEventIds(userEmail);
-        Map<Long, Integer> counts = likeService.likeCounts();
+        Map<Long, Long> counts = likeService.likeCounts();
         return events.stream()
                 .map(event -> EventResponse.fromEntity(
                         event,
                         likedIds.contains(event.getId()),
-                        counts.getOrDefault(event.getId(), 0)))
+                        counts.getOrDefault(event.getId(), 0L)))
                 .toList();
     }
 
