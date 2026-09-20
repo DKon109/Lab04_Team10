@@ -45,6 +45,13 @@ public class Event {
     @Column(nullable = false)
     private String category;
 
+    @Column(nullable = false, columnDefinition = "integer default 100")
+    private Integer capacity = 100;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32, columnDefinition = "varchar(32) default 'OPEN'")
+    private EventRegistrationStatus registrationStatus = EventRegistrationStatus.OPEN;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "event_tags", joinColumns = @JoinColumn(name = "event_id"))
     @Column(name = "tag")
@@ -156,5 +163,21 @@ public class Event {
 
     public void setTags(List<String> tags) {
         this.tags = tags;
+    }
+
+    public Integer getCapacity() {
+        return capacity;
+    }
+
+    public void setCapacity(Integer capacity) {
+        this.capacity = capacity;
+    }
+
+    public EventRegistrationStatus getRegistrationStatus() {
+        return registrationStatus;
+    }
+
+    public void setRegistrationStatus(EventRegistrationStatus registrationStatus){
+        this.registrationStatus = registrationStatus;
     }
 }
