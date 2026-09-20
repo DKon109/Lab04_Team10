@@ -80,6 +80,11 @@ class LikesAndEventCreationApiTest {
 
     @Test
     void likeUnlikeTogglePersistsAndUpdatesCounts() throws Exception {
+        // Repeating a like must still leave exactly one persisted relationship.
+        mockMvc.perform(post("/api/events/" + techEvent.getId() + "/like")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNoContent());
+
         mockMvc.perform(post("/api/events/" + techEvent.getId() + "/like")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isNoContent());
@@ -94,6 +99,10 @@ class LikesAndEventCreationApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].id").value(techEvent.getId()));
+
+        mockMvc.perform(delete("/api/events/" + techEvent.getId() + "/like")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNoContent());
 
         mockMvc.perform(delete("/api/events/" + techEvent.getId() + "/like")
                         .header("Authorization", "Bearer " + studentToken))

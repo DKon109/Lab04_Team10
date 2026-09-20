@@ -5,6 +5,7 @@ import com.ooaf.eventticketing.dto.EventResponse;
 import com.ooaf.eventticketing.entity.OrganiserType;
 import com.ooaf.eventticketing.service.EventService;
 import com.ooaf.eventticketing.service.LikeService;
+import com.ooaf.eventticketing.service.RecommendationService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -20,9 +21,13 @@ public class EventController {
     private final EventService eventService;
     private final LikeService likeService;
 
-    public EventController(EventService eventService, LikeService likeService) {
+    private final RecommendationService recommendationService;
+
+    public EventController(EventService eventService, LikeService likeService,
+                           RecommendationService recommendationService) {
         this.eventService = eventService;
         this.likeService = likeService;
+        this.recommendationService = recommendationService;
     }
     /**
      * Examples:
@@ -45,8 +50,9 @@ public class EventController {
 
     /** Personalised feed; requires authentication (enforced in SecurityConfig). */
     @GetMapping("/for-you")
-    public List<EventResponse> forYou(Authentication authentication) {
-        return eventService.forYou(emailOf(authentication));
+    public List<EventResponse> forYou(@RequestParam(required = false) String scope,
+                                      Authentication authentication) {
+        return recommendationService.recommendations(emailOf(authentication), scope);
     }
 
     @GetMapping("/{eventId}")
