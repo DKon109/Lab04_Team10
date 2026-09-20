@@ -11,19 +11,23 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+
+import com.ooaf.eventticketing.repository.UserRepository;
+import com.ooaf.eventticketing.entity.User;
+import com.ooaf.eventticketing.entity.UserRole;
+import com.ooaf.eventticketing.service.EventService;
 
 @Service
 public class EventService {
     private final EventRepository eventRepository;
     private final LikeService likeService;
+    private final UserRepository userRepository;
 
-    public EventService(EventRepository eventRepository, LikeService likeService) {
+    public EventService(EventRepository eventRepository, LikeService likeService, UserRepository userRepository) {
         this.eventRepository = eventRepository;
         this.likeService = likeService;
+        this.userRepository = userRepository;
     }
 
     public List<EventResponse> listEvents(String scope, OrganiserType organiserType, String category,
@@ -48,8 +52,12 @@ public class EventService {
         return withLikeInfo(likeService.likedEvents(userEmail), userEmail);
     }
 
-    public EventResponse createEvent(CreateEventRequest request) {
-        String city = (request.city() == null || request.city().isBlank()) ? "Sydney" : request.city().trim();
+    public EventResponse createEvent(CreateEventRequest request, String userEmail) {
+        User owner = requireOrganiser(userEmail);
+
+        String city = (request.city() == null ||
+                request.city().isBlank()) ? "Sydney"  : request.city().trim();
+
         String university = (request.university() == null || request.university().isBlank())
                 ? null : request.university().trim();
         Event event = new Event(
@@ -59,7 +67,45 @@ public class EventService {
                 request.category().trim(),
                 request.tags() == null ? new ArrayList<>() : new ArrayList<>(request.tags())
         );
+        event.setOwner(owner);
         return EventResponse.fromEntity(eventRepository.save(event), false, 0);
+    }
+
+    public List<EventResponse> listOrganiserEvents(String userEmail) {
+        User owner = requireOrganiser(userEmail);
+
+        List<Event> events =
+                eventRepository.findByOwner_IdOrderByDateTimeAsc(owner.getId());
+        return withLikeInfo(events, userEmail);
+    }
+
+    private User requireOrganiser(String userEmail) {
+        if  (userEmail == null || userEmail.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
+
+        User user = userRepository.findByEmail(userEmail).orElseThrow(()  -> new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED, "User not found: "));
+
+        if  (user.getRole() != UserRole.COMMITTEE_MEMBER) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Only organisers can perform this action");
+        }
+        return user;
+    }
+
+    private Event requireOwnedEvent(Long eventId, String userEmail) {
+        User organiser = requireOrganiser(userEmail);
+
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Event Not found"));
+
+        if (event.getOwner() == null || !organiser.getId().equals(event.getOwner().getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Only the event owner can perform this action");
+        }
+        return event;
     }
 
     /** Decorates events with the caller's likedByMe flags and real like counts. */

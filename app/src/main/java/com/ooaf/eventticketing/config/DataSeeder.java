@@ -1,9 +1,6 @@
 package com.ooaf.eventticketing.config;
 
-import com.ooaf.eventticketing.entity.Event;
-import com.ooaf.eventticketing.entity.OrganiserType;
-import com.ooaf.eventticketing.entity.User;
-import com.ooaf.eventticketing.entity.UserRole;
+import com.ooaf.eventticketing.entity.*;
 import com.ooaf.eventticketing.repository.EventRepository;
 import com.ooaf.eventticketing.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,6 +10,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.List;
+import com.ooaf.eventticketing.service.EventService;
 
 @Component
 @Profile("!test")
@@ -170,6 +168,11 @@ public class DataSeeder implements CommandLineRunner {
                         "Sydney Harbour", sydney, null, "City of Sydney", OrganiserType.OTHER,
                         "Festival", List.of("fireworks", "nye"))
         );
+
+        for (Event event : events) {
+            event.setStatus(EventStatus.PUBLISHED);
+        }
+
         eventRepository.saveAll(events);
     }
 

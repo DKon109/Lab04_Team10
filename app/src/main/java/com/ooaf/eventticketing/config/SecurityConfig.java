@@ -88,6 +88,8 @@ public class SecurityConfig {
                                 HttpMethod.GET,
                                 "/api/events/**"
                         ).permitAll()
+                        .requestMatchers("/api/organiser/**")
+                        .hasRole("COMMITTEE_MEMBER")
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()
                 )
