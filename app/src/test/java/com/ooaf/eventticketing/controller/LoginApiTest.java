@@ -63,7 +63,9 @@ class LoginApiTest {
                 .andExpect(jsonPath("$.tokenType")
                         .value("Bearer"))
                 .andExpect(jsonPath("$.expiresInSeconds")
-                        .value(3600));
+                        .value(3600))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
 
         assertEquals(1, tokenRepository.count());
     }
@@ -85,7 +87,12 @@ class LoginApiTest {
                                   "password": "IncorrectPassword123!"
                                 }
                                 """))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message")
+                        .value("Invalid email or password"))
+                .andExpect(jsonPath("$.path").value("/api/auth/login"));
     }
 
     @Test
@@ -98,7 +105,12 @@ class LoginApiTest {
                                   "password": "StrongPassword123!"
                                 }
                                 """))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message")
+                        .value("Invalid email or password"))
+                .andExpect(jsonPath("$.path").value("/api/auth/login"));
     }
 
     @Test
