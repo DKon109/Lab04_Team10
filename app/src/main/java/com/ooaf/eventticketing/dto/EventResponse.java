@@ -1,6 +1,7 @@
 package com.ooaf.eventticketing.dto;
 
 import com.ooaf.eventticketing.entity.Event;
+import com.ooaf.eventticketing.entity.EventRegistrationStatus;
 import com.ooaf.eventticketing.entity.OrganiserType;
 import lombok.Value;
 
@@ -23,6 +24,8 @@ public class EventResponse {
     List<String> tags;
     boolean likedByMe;
     Integer likeCount;
+    Integer capacity;
+    EventRegistrationStatus registrationStatus;
 
     public static EventResponse fromEntity(Event event) {
         return fromEntity(event, false, 0L);
@@ -33,7 +36,6 @@ public class EventResponse {
                 event.getId(), event.getTitle(), event.getDescription(), event.getImageUrl(),
                 event.getDateTime(), event.getVenue(), event.getCity(), event.getUniversity(),
                 event.getOrganiserName(), event.getOrganiserType(), event.getCategory(),
-                event.getTags(), likedByMe, Math.toIntExact(likeCount)
-        );
+                event.getTags(), likedByMe, Math.toIntExact(likeCount), event.getCapacity(), event.getRegistrationStatus());
     }
 }
