@@ -11,6 +11,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.ooaf.eventticketing.dto.UpdateEventStatusRequest;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -87,6 +88,17 @@ public class EventController {
             Authentication authentication) {
         return eventService.updateEvent(
                 eventId, request,  emailOf(authentication));
+    }
+
+    @PatchMapping("/{eventId}/status")
+    public EventResponse changeEventStatus(
+            @PathVariable Long eventId,
+            @Valid @RequestBody UpdateEventStatusRequest request,
+            Authentication authentication) {
+        return eventService.changeEventStatus(
+                eventId,
+                request.status(),
+                emailOf(authentication));
     }
 
     private String emailOf(Authentication authentication) {
