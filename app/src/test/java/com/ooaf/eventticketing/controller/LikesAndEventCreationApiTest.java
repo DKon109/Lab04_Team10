@@ -173,7 +173,8 @@ class LikesAndEventCreationApiTest {
                         .content(validEventJson()))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("Trivia Night"))
-                .andExpect(jsonPath("$.city").value("Sydney"));
+                .andExpect(jsonPath("$.city").value("Sydney"))
+                .andExpect(jsonPath("$.status").value("draft"));
         Event created = eventRepository.findAll().stream().filter(event ->
                 "Trivia Night".equals(event.getTitle())).findFirst().orElseThrow();
         assertEquals("organiser@test.local",
@@ -373,6 +374,52 @@ class LikesAndEventCreationApiTest {
                 .content(invalidRequest))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.title").exists());
+    }
+
+    @Test
+    void organiserCanFilterOwnEventsByStatus() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare a draft and a published event owned by the caller.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        eventRepository.saveAndFlush(techEvent);
+
+        similarTechEvent.setOwner(owner);
+        similarTechEvent.setStatus(EventStatus.PUBLISHED);
+        eventRepository.saveAndFlush(similarTechEvent);
+
+        // Prepare another organiser's draft.
+        User otherOwner = userRepository.save(new User(
+                "filter-other@test.local",
+                passwordEncoder.encode("password123"),
+                UserRole.COMMITTEE_MEMBER
+        ));
+
+        unrelatedEvent.setOwner(otherOwner);
+        unrelatedEvent.setStatus(EventStatus.DRAFT);
+        eventRepository.saveAndFlush(unrelatedEvent);
+
+        // Request only the caller's draft events.
+        mockMvc.perform(get("/api/organiser/events")
+                .param("status", "draft")
+                .header("Authorization", "Bearer " + organiserToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(techEvent.getId()))
+                .andExpect(jsonPath("$[0].status").value("draft"));
+    }
+
+    @Test
+    void organiserEventsRejectInvalidStatus() throws Exception {
+        // Reject an unsupported event status.
+        mockMvc.perform(get("/api/organiser/events")
+                .param("status", "unknown")
+                        .header("Authorization", "Bearer " + organiserToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(
+                        "Status must be draft, published, or closed"));
     }
 
     private String validEventJson() {

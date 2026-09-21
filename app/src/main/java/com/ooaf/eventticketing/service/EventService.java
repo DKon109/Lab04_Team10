@@ -70,11 +70,17 @@ public class EventService {
         return EventResponse.fromEntity(eventRepository.save(event), false, 0);
     }
 
-    public List<EventResponse> listOrganiserEvents(String userEmail) {
+    public List<EventResponse> listOrganiserEvents(String userEmail, String status) {
         User owner = requireOrganiser(userEmail);
+        EventStatus statusFilter = parseStatusFilter(status);
 
         List<Event> events =
-                eventRepository.findByOwner_IdOrderByDateTimeAsc(owner.getId());
+                eventRepository.findByOwner_IdOrderByDateTimeAsc(owner.getId())
+                        .stream()
+                        .filter(event -> statusFilter == null
+                        || event.getStatus() == statusFilter)
+                        .toList();
+
         return withLikeInfo(events, userEmail);
     }
 
@@ -110,6 +116,21 @@ public class EventService {
         );
 
         return withLikeInfo(List.of(event), userEmail).get(0);
+    }
+
+    private EventStatus parseStatusFilter(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+
+        try {
+            return EventStatus.valueOf(
+                    status.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception)  {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Status must be draft, published, or closed");
+        }
     }
 
     private User requireOrganiser(String userEmail) {

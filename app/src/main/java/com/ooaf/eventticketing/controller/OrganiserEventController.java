@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+import org.springframework.web.bind.annotation.RequestParam;
+
 @RestController
 @RequestMapping("/api/organiser/events")
 public class OrganiserEventController {
@@ -20,9 +22,11 @@ public class OrganiserEventController {
     }
 
     @GetMapping
-    public List<EventResponse> listEvents(Authentication authentication) {
+    public List<EventResponse> listEvents(
+            Authentication authentication,
+            @RequestParam(required = false) String status) {
         String userEmail = authentication == null ? null : authentication.getName();
 
-        return eventService.listOrganiserEvents(userEmail);
+        return eventService.listOrganiserEvents(userEmail, status);
     }
 }
