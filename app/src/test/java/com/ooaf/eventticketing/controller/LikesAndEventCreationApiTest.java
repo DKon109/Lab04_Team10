@@ -35,6 +35,7 @@ import jakarta.persistence.EntityManager;
 import javax.print.attribute.standard.Media;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -421,6 +422,233 @@ class LikesAndEventCreationApiTest {
                 .andExpect(jsonPath("$.message").value(
                         "Status must be draft, published, or closed"));
     }
+
+    @Test
+    void organiserCanPublishOwnDraftEvent() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare a future draft owned by the caller.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        techEvent.setDateTime(LocalDateTime.now().plusDays(5));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Publish the event through the API.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+                .header("Authorization", "Bearer " + organiserToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"status": "published"}
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(eventId))
+                .andExpect(jsonPath("$.status").value("published"));
+
+        // Reload from the database to verify persistence.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event published = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.PUBLISHED, published.getStatus());
+        assertEquals(owner.getId(), published.getOwner().getId());
+    }
+
+    @Test
+    void organiserCanCloseOwnPublishedEvent() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare a published event whose date has already passed.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.PUBLISHED);
+        techEvent.setDateTime(LocalDateTime.now().minusDays(1));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Close the event through the API.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+        .header("Authorization", "Bearer " + organiserToken)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+                {"status": "closed"}
+        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(eventId))
+                .andExpect(jsonPath("$.status").value("closed"));
+
+        // Reload from the database to verify persistence.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event closed = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.CLOSED, closed.getStatus());
+        assertEquals(owner.getId(), closed.getOwner().getId());
+    }
+
+    @Test
+    void organiserCannotPublishAnotherOrganiserEvent() throws Exception {
+        User otherOwner = userRepository.save(new User(
+                "publish-other@test.local",
+                passwordEncoder.encode("password123"),
+                UserRole.COMMITTEE_MEMBER
+        ));
+
+        // Assign the draft to a different organiser.
+        techEvent.setOwner(otherOwner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        techEvent.setDateTime(LocalDateTime.now().plusDays(5));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Attempt to publish using the original organiser's token.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+                .header("Authorization", "Bearer " + organiserToken)
+        .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"status": "published"}
+                        """))
+                .andExpect(status().isForbidden());
+
+        // Verify that the rejected request did not change the event.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event unchanged = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.DRAFT, unchanged.getStatus());
+        assertEquals(otherOwner.getId(), unchanged.getOwner().getId());
+    }
+
+    @Test
+    void organiserCannotPublishPastDraftEvent() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare an owned draft whose event date has passed.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        techEvent.setDateTime(LocalDateTime.now().minusDays(1));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Reject publication after the event date.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+        .header("Authorization", "Bearer " + organiserToken)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+                    {"status": "published"}
+        """))
+                .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.message").value("Event date must be in the future before publishing"));
+
+        // Verify that the event remains a draft.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event unchanged = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.DRAFT, unchanged.getStatus());
+    }
+
+    @Test
+    void organiserCannotCloseDraftEvent() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare a draft owned by the caller.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Reject a direct transition from draft to closed.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {"status": "closed"}
+        """))
+                .andExpect(status().isConflict());
+
+        // Verify that the rejected transition leaves the draft unchanged.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event unchanged = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.DRAFT, unchanged.getStatus());
+    }
+
+    @Test
+    void organiserCannotRepublishClosedEvent() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare a closed event with a future date.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.CLOSED);
+        techEvent.setDateTime(LocalDateTime.now().plusDays(5));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Reject reopening a closed event.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {"status": "published"}
+        """))
+                .andExpect(status().isConflict());
+
+        // Verify that the event remains closed.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event unchanged = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.CLOSED, unchanged.getStatus());
+    }
+
+    @Test
+    void changingEventStatusRequiresAuthentication() throws Exception {
+        // Reject a status change without an authentication token.
+        mockMvc.perform(patch("/api/events/{eventId}/status", techEvent.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"status": "published"}
+                        """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void studentCannotChangeEventStatus() throws Exception {
+        // Reject a status change by a student.
+        mockMvc.perform(patch("/api/events/{eventId}/status", techEvent.getId())
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"status": "published"}
+                        """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void changingEventStatusRequiresStatus() throws Exception {
+        // Reject a request with no status field.
+        mockMvc.perform(patch("/api/events/{eventId}/status", techEvent.getId())
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.status").exists());
+    }
+
+    @Test
+    void changingEventStatusRejectsInvalidStatus() throws Exception {
+        // Reject an unsupported target status.
+        mockMvc.perform(patch("/api/events/{eventId}/status", techEvent.getId())
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"status": "unknown"}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.status").value(
+                        "Status must be published or closed"));
+    }
+
 
     private String validEventJson() {
         return """

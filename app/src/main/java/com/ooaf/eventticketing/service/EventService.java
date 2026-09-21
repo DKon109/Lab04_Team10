@@ -118,6 +118,38 @@ public class EventService {
         return withLikeInfo(List.of(event), userEmail).get(0);
     }
 
+    @Transactional
+    public EventResponse changeEventStatus(
+            Long eventId, String status, String userEmail) {
+        Event event = requireOwnedEvent(eventId, userEmail);
+        EventStatus targetStatus = parseStatusFilter(status);
+
+        boolean canPublish =
+                event.getStatus() == EventStatus.DRAFT
+                && targetStatus == EventStatus.PUBLISHED;
+
+        boolean canClose =
+                event.getStatus() == EventStatus.PUBLISHED
+                && targetStatus == EventStatus.CLOSED;
+
+        if  (!canPublish && !canClose) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Only draft-to-published and published-to-closed transitions are allowed"
+            );
+        }
+
+        // Require a future event date when publishing.
+        if (canPublish && (event.getDateTime() == null
+        || !event.getDateTime().isAfter(LocalDateTime.now()))) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Event date must be in the future before publishing");
+        }
+
+        event.setStatus(targetStatus);
+        return withLikeInfo(List.of(event), userEmail).get(0);
+    }
+
     private EventStatus parseStatusFilter(String status) {
         if (status == null || status.isBlank()) {
             return null;
