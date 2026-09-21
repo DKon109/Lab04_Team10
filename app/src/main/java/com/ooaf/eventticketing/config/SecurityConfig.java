@@ -7,7 +7,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import jakarta.servlet.http.HttpServletResponse;
+import com.ooaf.eventticketing.dto.ApiErrorResponse;
+import com.ooaf.eventticketing.exception.ApiErrorResponseWriter;
 
 @Configuration
 public class SecurityConfig {
@@ -15,12 +16,17 @@ public class SecurityConfig {
     private final BearerTokenAuthenticationFilter
             bearerTokenAuthenticationFilter;
 
+    private final ApiErrorResponseWriter apiErrorResponseWriter;
+
     public SecurityConfig(
             BearerTokenAuthenticationFilter
-                    bearerTokenAuthenticationFilter
+                    bearerTokenAuthenticationFilter,
+            ApiErrorResponseWriter
+                    apiErrorResponseWriter
     ) {
         this.bearerTokenAuthenticationFilter =
                 bearerTokenAuthenticationFilter;
+        this.apiErrorResponseWriter = apiErrorResponseWriter;
     }
 
     @Bean
@@ -28,6 +34,8 @@ public class SecurityConfig {
             HttpSecurity http
     ) throws Exception {
         http
+                // Use the CORS policy defined by CorsConfigurationSource.
+                .cors(cors -> {})
                 // This API uses authentication tokens instead of browser sessions.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session
@@ -37,9 +45,26 @@ public class SecurityConfig {
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(
                                 (request, response, exception) ->
-                                        response.sendError(
-                                                HttpServletResponse
-                                                        .SC_UNAUTHORIZED
+                                        apiErrorResponseWriter.write(
+                                                response,
+                                                new ApiErrorResponse(
+                                                        401,
+                                                        "Unauthorized",
+                                                        "Authentication is required",
+                                                        request.getRequestURI()
+                                                )
+                                        )
+                        )
+                        .accessDeniedHandler(
+                                (request, response, exception) ->
+                                        apiErrorResponseWriter.write(
+                                                response,
+                                                new ApiErrorResponse(
+                                                        403,
+                                                        "Forbidden",
+                                                        "You do not have permission to perform this action",
+                                                        request.getRequestURI()
+                                                )
                                         )
                         ))
                 .authorizeHttpRequests(auth -> auth
@@ -48,6 +73,17 @@ public class SecurityConfig {
                                 "/api/auth/register",
                                 "/api/auth/login"
                         ).permitAll()
+                        // Personalised feed needs a user; must be matched
+                        // before the broader anonymous GET /api/events/**.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/events/for-you"
+                        ).authenticated()
+                        // Only organiser accounts may post events.
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/events"
+                        ).hasRole("COMMITTEE_MEMBER")
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/events",
