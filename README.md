@@ -5,6 +5,17 @@
 **ELEC5619 – Object Oriented Application Frameworks**  
 **Lab 4 | Group 10 | Sprint 0**
 
+> **Sprint 1 status:** the repo now contains a working slice — registration/login
+> (`app/`, Spring Boot + MySQL), an event-discovery feed with likes and a
+> personalised For You tab, and an organiser dashboard for posting events
+> (`frontend/`, React + Vite). Seating, payments, QR tickets and check-in below
+> are the Sprint 0 proposal direction and are **not built yet** (proposal not
+> final until 13 Sep 2026). See [`frontend/README.md`](frontend/README.md) to
+> run it and [`INTEGRATION_NOTES.md`](INTEGRATION_NOTES.md) for the current
+> API contract and gaps.
+
+See [Authentication API](AUTH_API.md) for registration, login, current-user endpoints, request/response examples, and authentication errors.
+
 ## Overview
 
 Tixora is a campus-first event ticketing and venue-entry platform built for university societies. It allows society committees to publish events, offer member and non-member tickets, manage allocated seating, take payments, issue QR e-tickets and monitor attendance through one system.

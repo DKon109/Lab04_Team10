@@ -18,6 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.ooaf.eventticketing.entity.AuthenticationToken;
+import com.ooaf.eventticketing.repository.AuthenticationTokenRepository;
+import java.time.Instant;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -37,10 +40,17 @@ class CurrentUserApiTest {
     @Autowired
     private TokenService tokenService;
 
+    @Autowired
+    private AuthenticationTokenRepository tokenRepository;
+
     @Test
     void rejectsRequestWithoutToken() throws Exception {
         mockMvc.perform(get("/api/auth/me"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Authentication is required"))
+                .andExpect(jsonPath("$.path").value("/api/auth/me"));
     }
 
     @Test
@@ -50,7 +60,12 @@ class CurrentUserApiTest {
                                 HttpHeaders.AUTHORIZATION,
                                 "Bearer invalid-token"
                         ))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Authentication is required"))
+                .andExpect(jsonPath("$.path").value("/api/auth/me"));
+
     }
 
     @Test
@@ -76,6 +91,38 @@ class CurrentUserApiTest {
                 .andExpect(jsonPath("$.email")
                         .value("current.user@uni.sydney.edu.au"))
                 .andExpect(jsonPath("$.role")
-                        .value("STUDENT"));
+                        .value("STUDENT"))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+    }
+
+    @Test
+    void rejectsRequestWithExpiredToken() throws Exception {
+        User user = new User(
+                "expired.token@uni.sydney.edu.au",
+                passwordEncoder.encode("StrongPassword123!"),
+                UserRole.STUDENT
+        );
+        User savedUser = userRepository.saveAndFlush(user);
+
+        String rawToken = "expired-test-token";
+
+        AuthenticationToken expiredToken = new AuthenticationToken(
+                tokenService.hashToken(rawToken),
+                savedUser,
+                Instant.now().minusSeconds(60)
+        );
+        tokenRepository.saveAndFlush(expiredToken);
+
+        mockMvc.perform(get("/api/auth/me")
+                .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + rawToken
+                ))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Authentication is required"))
+                .andExpect(jsonPath("$.path").value("/api/auth/me"));
     }
 }
