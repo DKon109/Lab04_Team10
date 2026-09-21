@@ -18,7 +18,7 @@ import java.util.List;
 @Profile("!test")
 public class DataSeeder implements CommandLineRunner {
 
-    private static final String DEMO_ORGANISER_EMAIL = "organiser@tixora.demo";
+    private static final String DEMO_ORGANISER_EMAIL = "committee.demo@uni.sydney.edu.au";
     private static final String DEMO_ORGANISER_SOCIETY = "USYD Coding Society";
 
     private final EventRepository eventRepository;
