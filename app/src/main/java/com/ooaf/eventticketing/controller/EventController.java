@@ -80,6 +80,15 @@ public class EventController {
         return eventService.createEvent(request,  emailOf(authentication));
     }
 
+    @PutMapping("/{eventId}")
+    public EventResponse updateEvent(
+            @PathVariable Long eventId,
+            @Valid @RequestBody CreateEventRequest request,
+            Authentication authentication) {
+        return eventService.updateEvent(
+                eventId, request,  emailOf(authentication));
+    }
+
     private String emailOf(Authentication authentication) {
         return authentication == null ? null : authentication.getName();
     }

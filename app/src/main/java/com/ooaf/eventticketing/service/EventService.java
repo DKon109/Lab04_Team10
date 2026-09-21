@@ -18,6 +18,9 @@ import com.ooaf.eventticketing.entity.User;
 import com.ooaf.eventticketing.entity.UserRole;
 import com.ooaf.eventticketing.service.EventService;
 
+import com.ooaf.eventticketing.entity.EventStatus;
+import org.springframework.transaction.annotation.Transactional;
+
 @Service
 public class EventService {
     private final EventRepository eventRepository;
@@ -73,6 +76,40 @@ public class EventService {
         List<Event> events =
                 eventRepository.findByOwner_IdOrderByDateTimeAsc(owner.getId());
         return withLikeInfo(events, userEmail);
+    }
+
+    @Transactional
+    public EventResponse updateEvent(
+            Long eventId, CreateEventRequest request, String userEmail) {
+        Event event = requireOwnedEvent(eventId, userEmail);
+
+        if (event.getStatus() != EventStatus.DRAFT) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Only draft events can be updated");
+        }
+
+        event.setTitle(request.title().trim());
+        event.setDescription(request.description());
+        event.setImageUrl(request.imageUrl());
+        event.setDateTime(request.dateTime());
+        event.setVenue(request.venue().trim());
+        event.setCity(
+                request.city() == null || request.city().isBlank()
+    ? "Sydney" : request.city().trim()
+        );
+        event.setUniversity(
+                request.university() == null || request.university().isBlank()
+                        ? null : request.university().trim()
+        );
+        event.setOrganiserName(request.organiserName().trim());
+        event.setOrganiserType(request.organiserType());
+        event.setCategory(request.category().trim());
+        event.setTags(request.tags() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(request.tags())
+        );
+
+        return withLikeInfo(List.of(event), userEmail).get(0);
     }
 
     private User requireOrganiser(String userEmail) {
