@@ -75,8 +75,9 @@ public class EventController {
     /** Organiser-only event posting (role enforced in SecurityConfig). */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public EventResponse createEvent(@Valid @RequestBody CreateEventRequest request) {
-        return eventService.createEvent(request);
+    public EventResponse createEvent(@Valid @RequestBody CreateEventRequest request,
+                                     Authentication authentication) {
+        return eventService.createEvent(request, emailOf(authentication));
     }
 
     private String emailOf(Authentication authentication) {

@@ -4,7 +4,10 @@ import com.ooaf.eventticketing.dto.CreateEventRequest;
 import com.ooaf.eventticketing.dto.EventResponse;
 import com.ooaf.eventticketing.entity.Event;
 import com.ooaf.eventticketing.entity.OrganiserType;
+import com.ooaf.eventticketing.entity.User;
+import com.ooaf.eventticketing.entity.UserRole;
 import com.ooaf.eventticketing.repository.EventRepository;
+import com.ooaf.eventticketing.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -19,10 +22,12 @@ import java.util.Set;
 @Service
 public class EventService {
     private final EventRepository eventRepository;
+    private final UserRepository userRepository;
     private final LikeService likeService;
 
-    public EventService(EventRepository eventRepository, LikeService likeService) {
+    public EventService(EventRepository eventRepository, UserRepository userRepository, LikeService likeService) {
         this.eventRepository = eventRepository;
+        this.userRepository = userRepository;
         this.likeService = likeService;
     }
 
@@ -44,14 +49,16 @@ public class EventService {
         return likeService.likedEvents(userEmail);
     }
 
-    public EventResponse createEvent(CreateEventRequest request) {
+    public EventResponse createEvent(CreateEventRequest request, String userEmail) {
+        User user = requireCommitteeMember(userEmail);
+        String organiserName = requireMatchingSociety(user, request.organiserName());
         String city = (request.city() == null || request.city().isBlank()) ? "Sydney" : request.city().trim();
         String university = (request.university() == null || request.university().isBlank())
                 ? null : request.university().trim();
         Event event = new Event(
                 request.title().trim(), request.description(), request.imageUrl(),
                 request.dateTime(), request.venue().trim(), city, university,
-                request.organiserName().trim(), request.organiserType(),
+                organiserName, request.organiserType(),
                 request.category().trim(),
                 request.tags() == null ? new ArrayList<>() : new ArrayList<>(request.tags())
         );
@@ -89,5 +96,25 @@ public class EventService {
 
     private boolean isAllSydney(String scope) {
         return scope == null || scope.isBlank() || scope.equalsIgnoreCase("ALL") || scope.equalsIgnoreCase("SYDNEY");
+    }
+
+    private User requireCommitteeMember(String userEmail) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated user no longer exists"));
+        if (user.getRole() != UserRole.COMMITTEE_MEMBER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Committee member access is required");
+        }
+        return user;
+    }
+
+    private String requireMatchingSociety(User user, String requestedOrganiserName) {
+        if (user.getSocietyName() == null || user.getSocietyName().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Committee member must be assigned to a society");
+        }
+        String societyName = user.getSocietyName().trim();
+        if (requestedOrganiserName == null || !societyName.equalsIgnoreCase(requestedOrganiserName.trim())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Committee member can only create events for their society");
+        }
+        return societyName;
     }
 }

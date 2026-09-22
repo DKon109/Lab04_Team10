@@ -85,7 +85,7 @@ comes from the backend. Switching modes requires **no component changes**:
 
 - **Student:** register any `@uni.sydney.edu.au` email on the Sign Up tab
   (password 8–72 chars). Registration auto-logs you in.
-- **Organiser:** the backend seeds `organiser@tixora.demo` /
+- **Organiser:** the backend seeds `committee.demo@uni.sydney.edu.au` /
   `OrganiserDemo1!` (override with the `DEMO_ORGANISER_PASSWORD` backend env
   var). This is a demo-only seed — remove before any real deployment.
 

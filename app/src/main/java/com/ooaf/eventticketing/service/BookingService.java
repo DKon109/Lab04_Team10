@@ -53,8 +53,8 @@ public class BookingService{
     @Transactional(readOnly = true)
     public List<BookingResponse> listEventBookings(Long eventId, String userEmail){
         User user = requireUser(userEmail);
-        requireCommitteeMember(user);
-        requireEvent(eventId);
+        Event event = requireEvent(eventId);
+        requireCommitteeMemberForEvent(user, event);
         return bookingRepository.findByEventIdOrderByCreatedAtAsc(eventId)
                 .stream()
                 .map(BookingResponse::fromEntity)
@@ -64,8 +64,8 @@ public class BookingService{
     @Transactional
     public CloseRegistrationResponse closeRegistration(Long eventId, String userEmail){
         User user = requireUser(userEmail);
-        requireCommitteeMember(user);
-        Event event = requireEvent(eventId);
+        Event event = requireEventForUpdate(eventId);
+        requireCommitteeMemberForEvent(user, event);
         event.setRegistrationStatus(EventRegistrationStatus.CLOSED);
         long confirmedBookings = countActiveBookings(eventId);
         long groups = bookingRepository.findByEventIdOrderByCreatedAtAsc(eventId)
@@ -80,8 +80,8 @@ public class BookingService{
     @Transactional(readOnly = true)
     public List<BookingExportResponse> exportForAllocation(Long eventId, String userEmail){
         User user = requireUser(userEmail);
-        requireCommitteeMember(user);
         Event event = requireEvent(eventId);
+        requireCommitteeMemberForEvent(user, event);
         if(event.getRegistrationStatus() != EventRegistrationStatus.CLOSED){
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Close registration before exporting bookings");
         }
@@ -93,7 +93,11 @@ public class BookingService{
     }
 
     private BookingResponse createNewBooking(Long eventId, User user, CreateBookingRequest request){
-        Event event = requireEvent(eventId);
+        Event event = requireEventForUpdate(eventId);
+        var existingBooking = bookingRepository.findByIdempotencyKey(request.idempotencyKey());
+        if(existingBooking.isPresent()){
+            return handleIdempotentRetry(existingBooking.get(), eventId, user.getId());
+        }
         if (event.getRegistrationStatus() != EventRegistrationStatus.OPEN){
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Registration is closed for this event");
         }
@@ -141,6 +145,11 @@ public class BookingService{
         return eventRepository.findById(eventId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found: " + eventId));
     }
 
+    private Event requireEventForUpdate(Long eventId){
+        return eventRepository.findByIdForUpdate(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found: " + eventId));
+    }
+
     private User requireUser(String email){
         return userRepository.findByEmail(email).orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated user no longer exists"));
     }
@@ -149,6 +158,19 @@ public class BookingService{
         if (user.getRole() != UserRole.COMMITTEE_MEMBER){
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Committee member access is required");
         }
+    }
+
+    private void requireCommitteeMemberForEvent(User user, Event event){
+        requireCommitteeMember(user);
+        if (!sameSociety(user.getSocietyName(), event.getOrganiserName())){
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Committee member can only manage events for their society");
+        }
+    }
+
+    private boolean sameSociety(String userSocietyName, String eventOrganiserName){
+        return userSocietyName != null
+                && eventOrganiserName != null
+                && userSocietyName.trim().equalsIgnoreCase(eventOrganiserName.trim());
     }
 
     private String nextReference(String prefix){
