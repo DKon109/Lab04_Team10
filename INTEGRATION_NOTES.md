@@ -1,4 +1,4 @@
-# Tixora Sprint 1 — frontend/backend integration notes
+# Tixora — frontend/backend integration notes
 
 Snapshot of where integration stands so the backend and frontend halves of the
 team know exactly what is wired up and what remains.
@@ -21,20 +21,22 @@ current-user requests and responses, authentication errors, and CORS settings.
 | `GET /api/events/for-you` | bearer | ranked +3 category / +2 organiser / +1 tag, excludes past & already-liked, cold-start = upcoming feed |
 | `POST /api/events` | bearer + `COMMITTEE_MEMBER` role | organiser event posting; validated `CreateEventRequest` |
 
-The like/for-you/create endpoints were added this sprint on top of the
+The like/for-you/create endpoints were added in Sprint 1 on top of the
 existing auth + events code (new: `EventLike` entity, `EventLikeRepository`,
 `LikeService`, `CreateEventRequest`, `UserController`; extended:
 `EventService`, `EventController`, `SecurityConfig`, `DataSeeder`).
 `EventService`'s old "Member 5" TODO is resolved — list responses now carry
 real `likedByMe`/`likeCount`.
 
-## Not yet implemented (future sprints)
+## Remaining work and integration gaps
 
-- Booking/attendance — the organiser dashboard's Attendees panel is a
-  placeholder until this exists.
-- Organiser self-service accounts — registration only creates `STUDENT`
-  users; organiser access uses the seeded demo account below.
-- Event editing/deletion for organisers.
+- The booking backend exists, but the current OrganiserPage Attendees
+  panel is still a placeholder.
+- Organiser self-service accounts are not implemented. Registration
+  creates STUDENT users; organiser access uses configured committee accounts.
+- Owner-only draft editing is implemented in the backend. Connecting
+  the organiser screens to the event management APIs remains frontend work.
+- Event deletion is not implemented.
 
 ## Blockers for the backend team
 
@@ -79,3 +81,69 @@ The frontend has two interchangeable likes adapters behind
 
 To switch: set the value in `frontend/.env`, restart `npm run dev`. No
 component changes are required in either direction.
+
+## Sprint 2: Event management APIs (SCRUM-46 and SCRUM-47)
+
+These backend APIs are implemented. Frontend integration is pending.
+
+All management endpoints require a bearer token and the
+COMMITTEE_MEMBER role.
+
+| Endpoint | Behaviour |
+|---|---|
+| `POST /api/events` | Creates a draft owned by the authenticated organiser. |
+| `GET /api/organiser/events` | Lists only the authenticated organiser's events. |
+| `GET /api/organiser/events?status=draft` | Filters the organiser's events by status. Accepted values are draft, published, and closed. Omit the parameter to list all statuses. |
+| `PUT /api/events/{id}` | Updates an owned draft using the complete CreateEventRequest body. |
+| `PATCH /api/events/{id}/status` | Publishes or closes an owned event. |
+
+### Ownership and society validation
+
+The backend assigns the owner from the authenticated user.
+Clients cannot select the owner.
+
+Creating and editing events requires organiserName to match the
+committee member's assigned society, ignoring case and surrounding
+whitespace. Another member of the same society cannot edit or change
+the status of an event they do not own.
+
+### Event lifecycle
+
+New events have status `draft`.
+
+The permitted transitions are:
+
+- `draft` to `published`
+- `published` to `closed`
+
+Publishing requires a future event date.
+Editing is permitted only while the event is a draft.
+Invalid transitions and editing a non-draft event return HTTP 409.
+
+Example status request body:
+
+    {"status": "published"}
+
+Use `{"status": "closed"}` to close a published event.
+
+### Public access and bookings
+
+Public event lists, details, recommendations, and liked-event lists
+expose only published events.
+
+Non-published event details and new like requests return HTTP 404.
+An existing like can still be removed after an event is closed.
+
+New bookings require a published event and open registration.
+An idempotent retry may return an existing booking.
+
+Event status and registrationStatus are separate fields.
+Changing event status to closed does not update registrationStatus,
+but new bookings are rejected because the event is no longer published.
+
+### Frontend handoff
+
+Aadi owns the organiser screen integration.
+Event creation saves a draft; it does not publish the event.
+Use the organiser endpoint to retrieve drafts and the status endpoint
+to publish or close them.
