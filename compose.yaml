@@ -1,0 +1,48 @@
+name: tixora
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-eventticketingsystem}
+      MYSQL_USER: ${MYSQL_USER:-tixora}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-tixora}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-tixora-root}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  backend:
+    build:
+      context: ./app
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:mysql://db:3306/${MYSQL_DATABASE:-eventticketingsystem}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USERNAME: ${MYSQL_USER:-tixora}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-tixora}
+      TIXORA_CORS_ALLOWED_ORIGIN: http://localhost:${FRONTEND_PORT:-5173}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql-data:

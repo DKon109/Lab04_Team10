@@ -51,35 +51,43 @@ public class EventService {
         return likeService.likedEvents(userEmail);
     }
 
-    public EventResponse createEvent(CreateEventRequest request, String userEmail) {
+    public EventResponse createEvent(
+            CreateEventRequest request, String userEmail) {
         User owner = requireOrganiser(userEmail);
+        String organiserName =
+                requireMatchingSociety(owner, request.organiserName());
 
-        String city = (request.city() == null ||
-                request.city().isBlank()) ? "Sydney"  : request.city().trim();
+        String city = (request.city() == null || request.city().isBlank())
+                ? "Sydney" : request.city().trim();
 
-        String university = (request.university() == null || request.university().isBlank())
-                ? null : request.university().trim();
+        String university =
+                (request.university() == null || request.university().isBlank())
+                        ? null : request.university().trim();
+
         Event event = new Event(
                 request.title().trim(), request.description(), request.imageUrl(),
                 request.dateTime(), request.venue().trim(), city, university,
-                request.organiserName().trim(), request.organiserType(),
+                organiserName, request.organiserType(),
                 request.category().trim(),
-                request.tags() == null ? new ArrayList<>() : new ArrayList<>(request.tags())
+                request.tags() == null
+                        ? new ArrayList<>() : new ArrayList<>(request.tags())
         );
+
         event.setOwner(owner);
         return EventResponse.fromEntity(eventRepository.save(event), false, 0);
     }
 
-    public List<EventResponse> listOrganiserEvents(String userEmail, String status) {
+    public List<EventResponse> listOrganiserEvents(
+            String userEmail, String status) {
         User owner = requireOrganiser(userEmail);
         EventStatus statusFilter = parseStatusFilter(status);
 
-        List<Event> events =
-                eventRepository.findByOwner_IdOrderByDateTimeAsc(owner.getId())
-                        .stream()
-                        .filter(event -> statusFilter == null
+        List<Event> events = eventRepository
+                .findByOwner_IdOrderByDateTimeAsc(owner.getId())
+                .stream()
+                .filter(event -> statusFilter == null
                         || event.getStatus() == statusFilter)
-                        .toList();
+                .toList();
 
         return withLikeInfo(events, userEmail);
     }
@@ -94,6 +102,9 @@ public class EventService {
                     HttpStatus.CONFLICT, "Only draft events can be updated");
         }
 
+        String organiserName = requireMatchingSociety(
+                event.getOwner(), request.organiserName());
+
         event.setTitle(request.title().trim());
         event.setDescription(request.description());
         event.setImageUrl(request.imageUrl());
@@ -107,7 +118,7 @@ public class EventService {
                 request.university() == null || request.university().isBlank()
                         ? null : request.university().trim()
         );
-        event.setOrganiserName(request.organiserName().trim());
+        event.setOrganiserName(organiserName);
         event.setOrganiserType(request.organiserType());
         event.setCategory(request.category().trim());
         event.setTags(request.tags() == null
@@ -225,5 +236,24 @@ public class EventService {
 
     private boolean isAllSydney(String scope) {
         return scope == null || scope.isBlank() || scope.equalsIgnoreCase("ALL") || scope.equalsIgnoreCase("SYDNEY");
+    }
+
+    private String requireMatchingSociety(
+            User user, String requestedOrganiserName) {
+        if (user.getSocietyName() == null || user.getSocietyName().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Committee member must be assigned to a society");
+        }
+
+        String societyName = user.getSocietyName().trim();
+
+        if (requestedOrganiserName == null
+                || !societyName.equalsIgnoreCase(
+                        requestedOrganiserName.trim())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Committee member can only manage events for their society");
+        }
+
+        return societyName;
     }
 }

@@ -60,6 +60,7 @@ class LikesAndEventCreationApiTest {
 
     private String studentToken;
     private String organiserToken;
+    private String unassignedOrganiserToken;
     private Event techEvent;
     private Event similarTechEvent;
     private Event unrelatedEvent;
@@ -72,9 +73,13 @@ class LikesAndEventCreationApiTest {
         User student = userRepository.save(new User(
                 "liker@uni.sydney.edu.au", passwordEncoder.encode("password123"), UserRole.STUDENT));
         User organiser = userRepository.save(new User(
-                "organiser@test.local", passwordEncoder.encode("password123"), UserRole.COMMITTEE_MEMBER));
+                "organiser@test.local", passwordEncoder.encode("password123"), UserRole.COMMITTEE_MEMBER,
+                "Coding Society"));
+        User unassignedOrganiser = userRepository.save(new User(
+                "unassigned.organiser@test.local", passwordEncoder.encode("password123"), UserRole.COMMITTEE_MEMBER));
         studentToken = tokenService.issueToken(student).token();
         organiserToken = tokenService.issueToken(organiser).token();
+        unassignedOrganiserToken = tokenService.issueToken(unassignedOrganiser).token();
 
         LocalDateTime future = LocalDateTime.now().plusDays(5);
         techEvent = eventRepository.save(new Event("Hackathon", "d", null, future,
@@ -175,13 +180,35 @@ class LikesAndEventCreationApiTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("Trivia Night"))
                 .andExpect(jsonPath("$.city").value("Sydney"))
-                .andExpect(jsonPath("$.status").value("draft"));
-        Event created = eventRepository.findAll().stream().filter(event ->
-                "Trivia Night".equals(event.getTitle())).findFirst().orElseThrow();
-        assertEquals("organiser@test.local",
-                created.getOwner().getEmail()
-        );
+                .andExpect(jsonPath("$.status").value("draft"))
+                .andExpect(jsonPath("$.organiserName").value("Coding Society"));
+
+        Event created = eventRepository.findAll().stream()
+                .filter(event -> "Trivia Night".equals(event.getTitle()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals("organiser@test.local", created.getOwner().getEmail());
         assertEquals(EventStatus.DRAFT, created.getStatus());
+    }
+
+    @Test
+    void organiserCannotCreateEventForAnotherSociety() throws Exception {
+        mockMvc.perform(post("/api/events")
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validEventJson()
+                                .replace("Coding Society", "Other Society")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void organiserWithoutSocietyCannotCreateEvent() throws Exception {
+        mockMvc.perform(post("/api/events")
+                        .header("Authorization", "Bearer " + unassignedOrganiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validEventJson()))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -658,7 +685,7 @@ class LikesAndEventCreationApiTest {
                   "dateTime": "%s",
                   "venue": "Manning Bar",
                   "university": "USYD",
-                  "organiserName": "USU",
+                  "organiserName": "Coding Society",
                   "organiserType": "SOCIETY",
                   "category": "Games",
                   "tags": ["trivia"]
