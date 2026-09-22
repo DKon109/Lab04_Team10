@@ -98,6 +98,11 @@ public class BookingService{
         if(existingBooking.isPresent()){
             return handleIdempotentRetry(existingBooking.get(), eventId, user.getId());
         }
+        // Only published events can accept new bookings.
+        if (event.getStatus() != EventStatus.PUBLISHED) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Event not found: " + eventId);
+        }
         if (event.getRegistrationStatus() != EventRegistrationStatus.OPEN){
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Registration is closed for this event");
         }
