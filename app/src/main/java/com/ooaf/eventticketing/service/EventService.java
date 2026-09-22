@@ -36,6 +36,7 @@ public class EventService {
     public List<EventResponse> listEvents(String scope, OrganiserType organiserType, String category,
                                           LocalDate date, boolean includePast, String userEmail) {
         List<Event> events = eventRepository.findAllByOrderByDateTimeAsc().stream()
+                .filter(event -> event.getStatus() == EventStatus.PUBLISHED)
                 .filter(event -> matches(event, scope, organiserType, category, date, includePast))
                 .toList();
         return withLikeInfo(events, userEmail);
@@ -43,6 +44,8 @@ public class EventService {
 
     public EventResponse getEvent(Long id, String userEmail) {
         Event event = eventRepository.findById(id)
+                .filter(foundEvent ->
+                        foundEvent.getStatus() == EventStatus.PUBLISHED)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found: " + id));
         return withLikeInfo(List.of(event), userEmail).get(0);
     }
