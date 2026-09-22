@@ -79,7 +79,8 @@ public class BookingControllerTest{
         );
         committeeToken = tokenFor(
                 "committee.member@uni.sydney.edu.au",
-                UserRole.COMMITTEE_MEMBER
+                UserRole.COMMITTEE_MEMBER,
+                "USYD Coding Society"
         );
     }
     @Test
@@ -230,6 +231,43 @@ public class BookingControllerTest{
     }
 
     @Test
+    void committeeMemberCannotManageBookingsForEventFromAnotherSociety()
+            throws Exception {
+        createBooking(studentToken, "cross-society-booking", true, null);
+        String otherSocietyCommitteeToken = tokenFor(
+                "music.committee@uni.sydney.edu.au",
+                UserRole.COMMITTEE_MEMBER,
+                "USYD Music Society"
+        );
+
+        mockMvc.perform(get("/api/events/{eventId}/bookings", eventId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(otherSocietyCommitteeToken)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/events/{eventId}/close-registration", eventId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(otherSocietyCommitteeToken)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/events/{eventId}/bookings/export", eventId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(otherSocietyCommitteeToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void committeeMemberWithoutSocietyCannotManageEventBookings()
+            throws Exception {
+        createBooking(studentToken, "unassigned-society-booking", true, null);
+        String unassignedCommitteeToken = tokenFor(
+                "unassigned.committee@uni.sydney.edu.au",
+                UserRole.COMMITTEE_MEMBER
+        );
+
+        mockMvc.perform(get("/api/events/{eventId}/bookings", eventId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(unassignedCommitteeToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void studentCannotCloseRegistration() throws Exception {
         mockMvc.perform(post("/api/events/{eventId}/close-registration", eventId)
                         .header(HttpHeaders.AUTHORIZATION, bearer(studentToken)))
@@ -275,7 +313,11 @@ public class BookingControllerTest{
     }
 
     private String tokenFor(String email, UserRole role) {
-        User user = new User(email, passwordEncoder.encode("StrongPassword123!"), role);
+        return tokenFor(email, role, null);
+    }
+
+    private String tokenFor(String email, UserRole role, String societyName) {
+        User user = new User(email, passwordEncoder.encode("StrongPassword123!"), role, societyName);
         User savedUser = userRepository.saveAndFlush(user);
         LoginResponse loginResponse = tokenService.issueToken(savedUser);
         return loginResponse.token();

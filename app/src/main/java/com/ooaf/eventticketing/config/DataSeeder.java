@@ -18,6 +18,9 @@ import java.util.List;
 @Profile("!test")
 public class DataSeeder implements CommandLineRunner {
 
+    private static final String DEMO_ORGANISER_EMAIL = "committee.demo@uni.sydney.edu.au";
+    private static final String DEMO_ORGANISER_SOCIETY = "USYD Coding Society";
+
     private final EventRepository eventRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -174,13 +177,19 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedDemoOrganiser() {
-        String email = "organiser@tixora.demo";
-        if (!userRepository.existsByEmail(email)) {
-            userRepository.save(new User(
-                    email,
+        userRepository.findByEmail(DEMO_ORGANISER_EMAIL)
+                .ifPresentOrElse(this::ensureDemoOrganiserSociety, () -> userRepository.save(new User(
+                    DEMO_ORGANISER_EMAIL,
                     passwordEncoder.encode(demoOrganiserPassword),
-                    UserRole.COMMITTEE_MEMBER
-            ));
+                    UserRole.COMMITTEE_MEMBER,
+                    DEMO_ORGANISER_SOCIETY
+            )));
+    }
+
+    private void ensureDemoOrganiserSociety(User user) {
+        if (user.getSocietyName() == null || user.getSocietyName().isBlank()) {
+            user.setSocietyName(DEMO_ORGANISER_SOCIETY);
+            userRepository.save(user);
         }
     }
 }
