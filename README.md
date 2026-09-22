@@ -16,6 +16,22 @@
 
 See [Authentication API](AUTH_API.md) for registration, login, current-user endpoints, request/response examples, and authentication errors.
 
+## Run with Docker
+
+The complete application can run with Docker Compose, including MySQL:
+
+```bash
+cp .env.example .env       # optional: customise ports and credentials
+docker compose up --build
+```
+
+Open <http://localhost:5173>. The frontend proxies `/api` requests to the
+backend inside the Compose network. The backend is also available directly at
+<http://localhost:8080> for API development.
+
+Stop the containers with `docker compose down`. Add `--volumes` only when you
+also want to delete the local MySQL data volume.
+
 ## Overview
 
 Tixora is a campus-first event ticketing and venue-entry platform built for university societies. It allows society committees to publish events, offer member and non-member tickets, manage allocated seating, take payments, issue QR e-tickets and monitor attendance through one system.

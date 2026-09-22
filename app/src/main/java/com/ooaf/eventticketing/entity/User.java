@@ -29,14 +29,22 @@ public class User {
     @Column(nullable = false, length = 32)
     private UserRole role;
 
+    @Column(length = 200)
+    private String societyName;
+
     // Required by JPA when reconstructing an entity from a database row.
     protected User() {
     }
 
     public User(String email, String passwordHash, UserRole role) {
+        this(email, passwordHash, role, null);
+    }
+
+    public User(String email, String passwordHash, UserRole role, String societyName) {
         this.email = email;
         this.passwordHash = passwordHash;
         this.role = role;
+        this.societyName = societyName;
     }
 
     public Long getId() {
@@ -53,5 +61,13 @@ public class User {
 
     public UserRole getRole() {
         return role;
+    }
+
+    public String getSocietyName() {
+        return societyName;
+    }
+
+    public void setSocietyName(String societyName) {
+        this.societyName = societyName;
     }
 }

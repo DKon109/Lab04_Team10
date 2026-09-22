@@ -38,16 +38,33 @@ real `likedByMe`/`likeCount`.
 
 ## Blockers for the backend team
 
-1. **Demo organiser seed** — `organiser@tixora.demo` / `OrganiserDemo1!`
+1. **Demo organiser seed** — `committee.demo@uni.sydney.edu.au` / `OrganiserDemo1!`
    (override via `DEMO_ORGANISER_PASSWORD` env var) is seeded by `DataSeeder`
    so the organiser dashboard is demoable. Decide the real
    organiser-onboarding story and remove this seed before anything public.
-2. **Deployment origin configuration** — CORS is implemented. For a frontend
+2. **Committee society setup** — organiser accounts must have
+   `users.society_name` set to the exact society/club name they manage. Booking
+   management and event creation compare this value with `events.organiser_name`
+   and return `403` when it is missing or different. Existing local databases
+   created before this field was introduced need a one-time backfill, for
+   example:
+
+   ```sql
+   UPDATE users
+   SET society_name = 'USYD Coding Society'
+   WHERE email = 'committee.demo@uni.sydney.edu.au'
+     AND role = 'COMMITTEE_MEMBER';
+   ```
+
+   Repeat the update for each committee account with its real society name.
+3. **Deployment origin configuration** — CORS is implemented. For a frontend
     that calls the backend directly from a different origin, set
     `TIXORA_CORS_ALLOWED_ORIGIN` to that frontend origin.
-3. `spring.jpa.hibernate.ddl-auto=update` creates the new `event_likes`
-   table automatically; if you manage schema manually, mirror it
-   (unique `(user_id, event_id)`, FKs to `users`/`events`, `created_at`).
+4. `spring.jpa.hibernate.ddl-auto=update` creates the new `event_likes`
+   table and nullable `users.society_name` column automatically; if you manage
+   schema manually, mirror them (`users.society_name varchar(200)`, plus
+   `event_likes` unique `(user_id, event_id)`, FKs to `users`/`events`,
+   `created_at`).
 
 ## Switching the frontend between local and backend likes
 
