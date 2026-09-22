@@ -64,7 +64,7 @@ public class BookingService{
     @Transactional
     public CloseRegistrationResponse closeRegistration(Long eventId, String userEmail){
         User user = requireUser(userEmail);
-        Event event = requireEvent(eventId);
+        Event event = requireEventForUpdate(eventId);
         requireCommitteeMemberForEvent(user, event);
         event.setRegistrationStatus(EventRegistrationStatus.CLOSED);
         long confirmedBookings = countActiveBookings(eventId);
@@ -93,7 +93,11 @@ public class BookingService{
     }
 
     private BookingResponse createNewBooking(Long eventId, User user, CreateBookingRequest request){
-        Event event = requireEvent(eventId);
+        Event event = requireEventForUpdate(eventId);
+        var existingBooking = bookingRepository.findByIdempotencyKey(request.idempotencyKey());
+        if(existingBooking.isPresent()){
+            return handleIdempotentRetry(existingBooking.get(), eventId, user.getId());
+        }
         if (event.getRegistrationStatus() != EventRegistrationStatus.OPEN){
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Registration is closed for this event");
         }
@@ -139,6 +143,11 @@ public class BookingService{
 
     private Event requireEvent(Long eventId){
         return eventRepository.findById(eventId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found: " + eventId));
+    }
+
+    private Event requireEventForUpdate(Long eventId){
+        return eventRepository.findByIdForUpdate(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found: " + eventId));
     }
 
     private User requireUser(String email){

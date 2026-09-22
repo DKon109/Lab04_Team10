@@ -254,6 +254,20 @@ public class BookingControllerTest{
     }
 
     @Test
+    void committeeMemberWithoutSocietyCannotManageEventBookings()
+            throws Exception {
+        createBooking(studentToken, "unassigned-society-booking", true, null);
+        String unassignedCommitteeToken = tokenFor(
+                "unassigned.committee@uni.sydney.edu.au",
+                UserRole.COMMITTEE_MEMBER
+        );
+
+        mockMvc.perform(get("/api/events/{eventId}/bookings", eventId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(unassignedCommitteeToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void studentCannotCloseRegistration() throws Exception {
         mockMvc.perform(post("/api/events/{eventId}/close-registration", eventId)
                         .header(HttpHeaders.AUTHORIZATION, bearer(studentToken)))
