@@ -5,6 +5,7 @@ import com.ooaf.eventticketing.entity.Event;
 import com.ooaf.eventticketing.repository.EventRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.ooaf.eventticketing.entity.EventStatus;
 
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -50,6 +51,7 @@ public class RecommendationService {
 
         LocalDateTime now = LocalDateTime.now();
         return eventRepository.findAll().stream()
+                .filter(event -> event.getStatus() == EventStatus.PUBLISHED)
                 .filter(event -> !event.getDateTime().isBefore(now))
                 .filter(event -> matchesScope(event, scope))
                 .filter(event -> !likedIds.contains(event.getId()))

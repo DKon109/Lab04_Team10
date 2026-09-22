@@ -38,6 +38,7 @@ class LikeServiceTest {
 
     @Test
     void repeatedLikeSavesOnlyOnce() {
+        when(event.getStatus()).thenReturn(EventStatus.PUBLISHED);
         when(likes.existsByUserAndEvent(user, event)).thenReturn(false, true);
         service.like(user.getEmail(), 10L);
         service.like(user.getEmail(), 10L);

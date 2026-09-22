@@ -7,6 +7,7 @@ import com.ooaf.eventticketing.entity.UserRole;
 import com.ooaf.eventticketing.repository.EventRepository;
 import com.ooaf.eventticketing.repository.UserRepository;
 import com.ooaf.eventticketing.service.TokenService;
+import com.ooaf.eventticketing.repository.EventLikeRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,6 +69,9 @@ class LikesAndEventCreationApiTest {
     @Autowired
     private EntityManager entityManager;
 
+    @Autowired
+    private EventLikeRepository eventLikeRepository;
+
     @BeforeEach
     void setUp() {
         User student = userRepository.save(new User(
@@ -91,6 +95,13 @@ class LikesAndEventCreationApiTest {
         unrelatedEvent = eventRepository.save(new Event("Jazz Night", "d", null, future.plusHours(1),
                 "Opera House", "Sydney", null, "Opera House", OrganiserType.OTHER,
                 "Music", List.of("jazz")));
+        // Use published events for the existing discovery and like tests.
+        techEvent.setStatus(EventStatus.PUBLISHED);
+        similarTechEvent.setStatus(EventStatus.PUBLISHED);
+        unrelatedEvent.setStatus(EventStatus.PUBLISHED);
+
+        eventRepository.saveAllAndFlush(
+                List.of(techEvent, similarTechEvent, unrelatedEvent));
     }
 
     @Test
@@ -676,6 +687,117 @@ class LikesAndEventCreationApiTest {
                         "Status must be published or closed"));
     }
 
+    @Test
+    void publicEventListShowsOnlyPublishedEvents() throws Exception {
+        // Prepare one event in each lifecycle state.
+        techEvent.setStatus(EventStatus.DRAFT);
+        similarTechEvent.setStatus(EventStatus.PUBLISHED);
+        unrelatedEvent.setStatus(EventStatus.CLOSED);
+
+        eventRepository.saveAllAndFlush(
+                List.of(techEvent, similarTechEvent, unrelatedEvent));
+
+        // Public discovery must return only the published event.
+        mockMvc.perform(get("/api/events"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$",  hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(similarTechEvent.getId()))
+                .andExpect(jsonPath("$[0].status").value("published"));
+    }
+
+    @Test
+    void publicEventDetailsHideDraftEvents() throws Exception {
+        // Hide draft details even when the event ID is known.
+        techEvent.setStatus(EventStatus.DRAFT);
+        eventRepository.saveAndFlush(techEvent);
+
+        mockMvc.perform(get("/api/events/{eventId}", techEvent.getId()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void publicEventDetailsHideClosedEvents() throws Exception {
+        // Hide closed events from the public detail endpoint.
+        techEvent.setStatus(EventStatus.CLOSED);
+        eventRepository.saveAndFlush(techEvent);
+
+        mockMvc.perform(get("/api/events/{eventId}", techEvent.getId()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void forYouShowsOnlyPublishedEvents() throws Exception {
+        // Prepare future events in different lifecycle states.
+        techEvent.setStatus(EventStatus.DRAFT);
+        similarTechEvent.setStatus(EventStatus.PUBLISHED);
+        unrelatedEvent.setStatus(EventStatus.CLOSED);
+
+        eventRepository.saveAllAndFlush(
+                List.of(techEvent, similarTechEvent, unrelatedEvent));
+
+        // Recommendations must exclude draft and closed events.
+        mockMvc.perform(get("/api/events/for-you")
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$",  hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(similarTechEvent.getId()))
+                .andExpect(jsonPath("$[0].status").value("published"));
+    }
+
+    @Test
+    void studentCannotLikeDraftEvent() throws Exception {
+        // Reject likes on a draft even when its ID is known.
+        techEvent.setStatus(EventStatus.DRAFT);
+        eventRepository.saveAndFlush(techEvent);
+
+        mockMvc.perform(post("/api/events/{eventId}/like", techEvent.getId())
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void studentCannotLikeClosedEvent() throws Exception {
+        // Reject new likes on a closed event.
+        techEvent.setStatus(EventStatus.CLOSED);
+        eventRepository.saveAndFlush(techEvent);
+
+        mockMvc.perform(post("/api/events/{eventId}/like", techEvent.getId())
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void closedEventIsHiddenFromLikesButCanStillBeUnliked() throws Exception {
+        // Like an event while it is published.
+        mockMvc.perform(post("/api/events/{eventId}/like", techEvent.getId())
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNoContent());
+
+        // Close the event and verify it disappears from the liked list.
+        techEvent.setStatus(EventStatus.CLOSED);
+        eventRepository.saveAndFlush(techEvent);
+
+        mockMvc.perform(get("/api/users/me/liked-events")
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$",  hasSize(0)));
+
+        User student = userRepository.findByEmail("liker@uni.sydney.edu.au")
+                .orElseThrow();
+
+        assertEquals(true,
+                eventLikeRepository.existsByUserAndEvent(student, techEvent));
+
+        // Allow the user to remove the existing like after closure.
+        mockMvc.perform(delete("/api/events/{eventId}/like", techEvent.getId())
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNoContent());
+
+        entityManager.flush();
+
+        assertEquals(false,
+                eventLikeRepository.existsByUserAndEvent(student, techEvent));
+    }
 
     private String validEventJson() {
         return """
