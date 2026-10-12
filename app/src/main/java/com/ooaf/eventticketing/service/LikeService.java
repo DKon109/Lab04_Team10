@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.ooaf.eventticketing.entity.EventStatus;
 
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,14 @@ public class LikeService {
     public void like(String email, Long eventId) {
         User user = findUser(email);
         Event event = findEvent(eventId);
+
+        // Only published events can receive new likes.
+        if (event.getStatus() != EventStatus.PUBLISHED) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Event not found: " + eventId);
+        }
+
         if (!eventLikeRepository.existsByUserAndEvent(user, event)) {
             eventLikeRepository.save(new EventLike(user, event));
         }
@@ -61,6 +70,7 @@ public class LikeService {
     public List<Event> likedEventEntities(String email) {
         return eventLikeRepository.findAllByUserEmailWithEvent(email).stream()
                 .map(EventLike::getEvent)
+                .filter(event -> event.getStatus() == EventStatus.PUBLISHED)
                 .toList();
     }
 

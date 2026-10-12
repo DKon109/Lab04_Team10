@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.ooaf.eventticketing.entity.EventStatus;
+
 class LikeServiceTest {
     private final EventLikeRepository likes = mock(EventLikeRepository.class);
     private final EventRepository events = mock(EventRepository.class);
@@ -36,6 +38,7 @@ class LikeServiceTest {
 
     @Test
     void repeatedLikeSavesOnlyOnce() {
+        when(event.getStatus()).thenReturn(EventStatus.PUBLISHED);
         when(likes.existsByUserAndEvent(user, event)).thenReturn(false, true);
         service.like(user.getEmail(), 10L);
         service.like(user.getEmail(), 10L);
@@ -73,6 +76,7 @@ class LikeServiceTest {
     @Test
     void likedEventsIncludePersonalStateAndTotalCount() {
         when(event.getId()).thenReturn(10L);
+        when(event.getStatus()).thenReturn(EventStatus.PUBLISHED);
         when(likes.findAllByUserEmailWithEvent(user.getEmail()))
                 .thenReturn(List.of(new EventLike(user, event)));
         EventLikeCount count = mock(EventLikeCount.class);
@@ -86,6 +90,7 @@ class LikeServiceTest {
         assertEquals(10L, result.get(0).getId());
         assertTrue(result.get(0).isLikedByMe());
         assertEquals(3, result.get(0).getLikeCount());
+        assertEquals("published", result.get(0).getStatus());
     }
 
     @Test

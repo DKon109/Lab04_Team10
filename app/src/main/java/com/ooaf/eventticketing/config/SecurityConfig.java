@@ -85,10 +85,20 @@ public class SecurityConfig {
                                 "/api/events"
                         ).hasRole("COMMITTEE_MEMBER")
                         .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/events/*"
+                        ).hasRole("COMMITTEE_MEMBER")
+                        .requestMatchers(
+                                HttpMethod.PATCH,
+                                "/api/events/*/status"
+                        ).hasRole("COMMITTEE_MEMBER")
+                        .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/events",
                                 "/api/events/*"
                         ).permitAll()
+                        .requestMatchers("/api/organiser/**")
+                        .hasRole("COMMITTEE_MEMBER")
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()
                 )
