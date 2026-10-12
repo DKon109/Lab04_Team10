@@ -16,6 +16,14 @@ public class Event {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id")
+    private User owner;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "varchar(32) default 'PUBLISHED'")
+    private EventStatus status =  EventStatus.DRAFT;
+
     @Column(nullable = false)
     private String title;
 
@@ -76,6 +84,14 @@ public class Event {
     public Long getId() {
         return id;
     }
+
+    public User getOwner() { return owner; }
+
+    public void setOwner(User owner) { this.owner = owner; }
+
+    public EventStatus getStatus() { return status; }
+
+    public void setStatus(EventStatus status) { this.status = status; }
 
     public String getTitle() {
         return title;

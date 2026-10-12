@@ -7,6 +7,7 @@ import lombok.Value;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 
 @Value
 public class EventResponse {
@@ -24,6 +25,7 @@ public class EventResponse {
     List<String> tags;
     boolean likedByMe;
     Integer likeCount;
+    String status;
     Integer capacity;
     EventRegistrationStatus registrationStatus;
     boolean seatIdentifiersConfirmed;
@@ -34,9 +36,13 @@ public class EventResponse {
 
     public static EventResponse fromEntity(Event event, boolean likedByMe, long likeCount) {
         return new EventResponse(
-                event.getId(), event.getTitle(), event.getDescription(), event.getImageUrl(),
-                event.getDateTime(), event.getVenue(), event.getCity(), event.getUniversity(),
-                event.getOrganiserName(), event.getOrganiserType(), event.getCategory(),
-                event.getTags(), likedByMe, Math.toIntExact(likeCount), event.getCapacity(), event.getRegistrationStatus(), event.isSeatIdentifiersConfirmed());
+                event.getId(), event.getTitle(), event.getDescription(),
+                event.getImageUrl(), event.getDateTime(), event.getVenue(),
+                event.getCity(), event.getUniversity(), event.getOrganiserName(),
+                event.getOrganiserType(), event.getCategory(), event.getTags(),
+                likedByMe, Math.toIntExact(likeCount),
+                event.getStatus().name().toLowerCase(Locale.ROOT),
+                 event.getCapacity(), event.getRegistrationStatus(), event.isSeatIdentifiersConfirmed()
+        );
     }
 }
