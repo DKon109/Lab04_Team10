@@ -13,6 +13,8 @@ import java.util.Optional;
 public interface EventRepository extends JpaRepository<Event, Long> {
     List<Event> findAllByOrderByDateTimeAsc();
 
+    List<Event> findByOwner_IdOrderByDateTimeAsc(Long ownerId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select event from Event event where event.id = :id")
     Optional<Event> findByIdForUpdate(@Param("id") Long id);

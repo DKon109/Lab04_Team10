@@ -4,6 +4,7 @@ import com.ooaf.eventticketing.dto.EventResponse;
 import com.ooaf.eventticketing.entity.Event;
 import com.ooaf.eventticketing.entity.OrganiserType;
 import com.ooaf.eventticketing.repository.EventRepository;
+import com.ooaf.eventticketing.entity.EventStatus;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -114,6 +115,7 @@ class RecommendationServiceTest {
                 LocalDateTime.now().plusDays(1), List.of());
         Event elsewhere = new Event("Melbourne", "d", null, LocalDateTime.now().plusDays(2),
                 "venue", "Melbourne", null, "A", OrganiserType.OTHER, "Arts", List.of());
+        elsewhere.setStatus(EventStatus.PUBLISHED);
         when(events.findAll()).thenReturn(List.of(elsewhere, community));
         when(likes.likedEventEntities("student")).thenReturn(List.of());
         when(likes.likeCounts()).thenReturn(Map.of());
@@ -131,6 +133,7 @@ class RecommendationServiceTest {
         Field idField = Event.class.getDeclaredField("id");
         idField.setAccessible(true);
         idField.set(event, id);
+        event.setStatus(EventStatus.PUBLISHED);
         return event;
     }
 }
