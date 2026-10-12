@@ -6,7 +6,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name="bookings")
+@Table(name="bookings", uniqueConstraints = @UniqueConstraint(name = "uq_event_assigned_seat", columnNames = {"event_id", "seat_code"}))
 @NoArgsConstructor
 public class Booking {
     @Id
@@ -40,6 +40,15 @@ public class Booking {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "seat_code", length = 8) private String seatCode;
+    @Column(length = 300) private String splitReason;
+
+    public String getSeatCode() { return seatCode; }
+    public String getSplitReason() { return splitReason; }
+    public void assignSeat(String seatCode, String splitReason) {
+        this.seatCode = seatCode; this.splitReason = splitReason; this.status = BookingStatus.ALLOCATED;
+    }
+
     public Booking(String bookingRef, Event event, User user, String groupCode, boolean accessibilityRequired, String idempotencyKey){
         this.bookingRef = bookingRef;
         this.event = event;
@@ -48,7 +57,7 @@ public class Booking {
         this.accessibilityRequired = accessibilityRequired;
         this.idempotencyKey = idempotencyKey;
         this.status = BookingStatus.PENDING_ALLOCATION;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
     }
 
     public Long getId() {

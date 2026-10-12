@@ -26,11 +26,13 @@ public class EventService {
     private final EventRepository eventRepository;
     private final LikeService likeService;
     private final UserRepository userRepository;
+    private final com.ooaf.eventticketing.repository.SeatingLayoutRepository layouts;
 
-    public EventService(EventRepository eventRepository, LikeService likeService, UserRepository userRepository) {
+    public EventService(EventRepository eventRepository, LikeService likeService, UserRepository userRepository, com.ooaf.eventticketing.repository.SeatingLayoutRepository layouts) {
         this.eventRepository = eventRepository;
         this.likeService = likeService;
         this.userRepository = userRepository;
+        this.layouts = layouts;
     }
 
     public List<EventResponse> listEvents(String scope, OrganiserType organiserType, String category,
@@ -75,7 +77,8 @@ public class EventService {
                 request.tags() == null
                         ? new ArrayList<>() : new ArrayList<>(request.tags())
         );
-
+        if (request.capacity() != null) event.setCapacity(request.capacity());
+        event.setSeatIdentifiersConfirmed(Boolean.TRUE.equals(request.seatIdentifiersConfirmed()));
         event.setOwner(owner);
         return EventResponse.fromEntity(eventRepository.save(event), false, 0);
     }
@@ -124,6 +127,10 @@ public class EventService {
         event.setOrganiserName(organiserName);
         event.setOrganiserType(request.organiserType());
         event.setCategory(request.category().trim());
+        if (!layouts.existsById(eventId)) {
+            if (request.capacity() != null) event.setCapacity(request.capacity());
+            event.setSeatIdentifiersConfirmed(Boolean.TRUE.equals(request.seatIdentifiersConfirmed()));
+        }
         event.setTags(request.tags() == null
                 ? new ArrayList<>()
                 : new ArrayList<>(request.tags())
@@ -160,6 +167,10 @@ public class EventService {
                     "Event date must be in the future before publishing");
         }
 
+        if (canPublish && event.isSeatIdentifiersConfirmed() && !layouts.existsById(eventId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Save the seating layout before publishing an assigned-seating event");
+        }
+        if (canClose) event.setRegistrationStatus(com.ooaf.eventticketing.entity.EventRegistrationStatus.CLOSED);
         event.setStatus(targetStatus);
         return withLikeInfo(List.of(event), userEmail).get(0);
     }
@@ -197,7 +208,7 @@ public class EventService {
     private Event requireOwnedEvent(Long eventId, String userEmail) {
         User organiser = requireOrganiser(userEmail);
 
-        Event event = eventRepository.findById(eventId)
+        Event event = eventRepository.findByIdForUpdate(eventId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Event Not found"));
 

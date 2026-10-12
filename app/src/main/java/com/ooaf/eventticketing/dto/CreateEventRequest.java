@@ -42,6 +42,8 @@ public record CreateEventRequest(
         @NotBlank(message = "Category is required")
         String category,
 
-        List<String> tags
+        List<String> tags,
+        @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(300) Integer capacity,
+        Boolean seatIdentifiersConfirmed
 ) {
 }

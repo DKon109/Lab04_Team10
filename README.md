@@ -1,5 +1,7 @@
 # Tixora
 
+> **Sprint 3 review branch (12 October 2026):** responsive attendee experience, mock checkout, organiser lifecycle, persisted seating/allocation, private seat-map tickets and anonymous export are now integrated. Start with [Sprint 3 handoff and run commands](docs/SPRINT3_TEJAS.md), [checkout API](docs/MOCK_CHECKOUT_API.md), and [seating API](docs/SEATING_API.md). Campus layouts remain explicitly unverified demos. The Sprint 0/1 descriptions below are historical, not the current implementation contract.
+
 ### Campus ticketing made simpler, fairer and more accessible
 
 **ELEC5619 – Object Oriented Application Frameworks**  

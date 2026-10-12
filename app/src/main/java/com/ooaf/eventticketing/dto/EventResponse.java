@@ -28,6 +28,7 @@ public class EventResponse {
     String status;
     Integer capacity;
     EventRegistrationStatus registrationStatus;
+    boolean seatIdentifiersConfirmed;
 
     public static EventResponse fromEntity(Event event) {
         return fromEntity(event, false, 0L);
@@ -41,7 +42,7 @@ public class EventResponse {
                 event.getOrganiserType(), event.getCategory(), event.getTags(),
                 likedByMe, Math.toIntExact(likeCount),
                 event.getStatus().name().toLowerCase(Locale.ROOT),
-                event.getCapacity(), event.getRegistrationStatus()
+                 event.getCapacity(), event.getRegistrationStatus(), event.isSeatIdentifiersConfirmed()
         );
     }
 }
