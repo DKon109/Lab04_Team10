@@ -17,6 +17,12 @@ import java.util.Map;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataConflict(HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorResponse(
+                409, "Conflict", "The request conflicts with existing data. Check your booking before retrying.", request.getRequestURI()));
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApiErrorResponse> handleResponseStatusException(
             ResponseStatusException exception,

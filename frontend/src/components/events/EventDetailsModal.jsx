@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { EventImage } from '../common/EventImage';
 import { formatEventDate } from '../../utils/format';
 
@@ -23,7 +24,7 @@ export function EventDetailsModal({ event, liked, likeCount, onToggleLike, onClo
       }
       if (e.key === 'Tab') {
         const focusables = dialogRef.current?.querySelectorAll(
-          'button, [href], input, select, textarea'
+          'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)'
         );
         if (!focusables || focusables.length === 0) return;
         const first = focusables[0];
@@ -97,6 +98,10 @@ export function EventDetailsModal({ event, liked, likeCount, onToggleLike, onClo
               </>
             )}
           </dl>
+
+          <div className="modal-booking"><p>{event.seatIdentifiersConfirmed ? 'Make it a plan. Book solo or with a private group.' : 'Make it a plan. Reserve your individual place.'}</p>
+            {event.registrationStatus === 'CLOSED' || new Date(event.dateTime) <= new Date() ? <p role="status">Registration unavailable</p> : <Link className="btn btn-primary" to={`/events/${event.id}/book`}>Book this event →</Link>}
+          </div>
 
           <button
             type="button"

@@ -101,6 +101,9 @@ public class BookingService{
         if (event.getRegistrationStatus() != EventRegistrationStatus.OPEN){
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Registration is closed for this event");
         }
+        if (!event.getDateTime().isAfter(java.time.LocalDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This event has already started");
+        }
         if(bookingRepository.existsByEventIdAndUserIdAndStatusNot(eventId, user.getId(), BookingStatus.CANCELLED)){
             throw new ResponseStatusException(HttpStatus.CONFLICT, "User already has a booking for this event");
         }
@@ -109,6 +112,9 @@ public class BookingService{
         }
         boolean createGroup = Boolean.TRUE.equals(request.createGroup());
         String joinGroupCode = normalizeGroupCode(request.joinGroupCode());
+        if ((createGroup || joinGroupCode != null) && !event.isSeatIdentifiersConfirmed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Group booking requires organiser-confirmed physical seat identifiers");
+        }
         if(createGroup && joinGroupCode != null){
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Use either createGroup or joinGroupCode");
         }

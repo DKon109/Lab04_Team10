@@ -68,6 +68,7 @@ public class BookingControllerTest{
                 LocalDateTime.now().plusDays(5), "Susan Wakil Building", "Sydney", "USYD", "USYD Coding Society",
                 OrganiserType.SOCIETY, "Technology", List.of("hackathon", "coding"));
         event.setCapacity(2);
+        event.setSeatIdentifiersConfirmed(true);
         eventId = eventRepository.saveAndFlush(event).getId();
         studentToken = tokenFor(
                 "booking.student@uni.sydney.edu.au",

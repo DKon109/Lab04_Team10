@@ -165,6 +165,13 @@ public class Event {
         this.tags = tags;
     }
 
+    // Nullable for existing databases: unconfirmed legacy events are safely false.
+    @Column
+    private Boolean seatIdentifiersConfirmed = false;
+
+    public boolean isSeatIdentifiersConfirmed() { return Boolean.TRUE.equals(seatIdentifiersConfirmed); }
+    public void setSeatIdentifiersConfirmed(boolean confirmed) { this.seatIdentifiersConfirmed = confirmed; }
+
     public Integer getCapacity() {
         return capacity;
     }
