@@ -30,7 +30,7 @@ public class MockCheckoutService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public MockCheckoutResponse checkout(Long eventId, String email, MockCheckoutRequest request) {
         var user = users.findByEmail(email).orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
-        events.findByIdForUpdate(eventId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+        var event = events.findByIdForUpdate(eventId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
         String group = request.joinGroupCode() == null ? "" : request.joinGroupCode().trim().toUpperCase(Locale.ROOT);
         boolean create = Boolean.TRUE.equals(request.createGroup());
         boolean accessible = Boolean.TRUE.equals(request.accessibilityRequired());
@@ -48,6 +48,9 @@ public class MockCheckoutService {
             return new MockCheckoutResponse(attempt.getPaymentRef(), attempt.getOutcome(), booking);
         }
         BookingResponse booking = null;
+        if (event.getStatus() == com.ooaf.eventticketing.entity.EventStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found");
+        }
         if (request.outcome() == MockCheckoutRequest.Outcome.SUCCESS) {
             booking = bookingService.createBooking(eventId, email, new CreateBookingRequest(create, group, accessible, UUID.randomUUID().toString()));
         }

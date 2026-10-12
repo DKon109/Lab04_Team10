@@ -135,6 +135,31 @@ class SeatAllocationServiceTest {
         assertFalse(actual.assignments().isEmpty());
     }
 
+    @Test
+    void preservesAccessibleSeatForLaterSmallerGroupEvenWhenSplittingEarlierGroup() {
+        var result = service.allocate(List.of(booking(1L, "LARGE", false), booking(2L, "LARGE", false), booking(3L, null, true)),
+                List.of(seat(1L, "A", 0, 1, true, false), seat(2L, "A", 0, 2, false, false), seat(3L, "B", 1, 1, false, false)));
+        assertEquals(1L, result.assignments().stream().filter(a -> a.bookingId() == 3L).findFirst().orElseThrow().seatId());
+        assertEquals(1, result.splits().size());
+    }
+
+    @Test
+    void allocatesThreeHundredAttendeesWithinProposalBudget() {
+        var bookings = new ArrayList<AllocationBooking>();
+        var seats = new ArrayList<AllocationSeat>();
+        for (int index = 0; index < 300; index++) {
+            bookings.add(booking((long) index + 1, "G" + index / 5, index % 20 == 0));
+            seats.add(seat((long) index + 1, String.valueOf((char) ('A' + index / 20)), index / 20, index % 20 + 1, index % 20 < 2, false));
+        }
+        long start = System.nanoTime();
+        var result = service.allocate(bookings, seats);
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+        System.out.println("ALLOCATION_300_ATTENDEES_MS=" + elapsedMs);
+        assertEquals(300, result.assignments().size());
+        assertEquals(300, result.assignments().stream().map(SeatAssignment::seatId).distinct().count());
+        org.junit.jupiter.api.Assertions.assertTrue(elapsedMs < 10_000, "Allocation must finish within 10 seconds on the test machine");
+    }
+
     private AllocationBooking booking(Long id, String groupCode, boolean accessibilityRequired) {
         return new AllocationBooking(id, groupCode, accessibilityRequired);
     }

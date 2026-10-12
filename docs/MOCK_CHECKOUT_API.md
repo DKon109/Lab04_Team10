@@ -25,8 +25,8 @@ Response (HTTP 200): `paymentRef`, `outcome`, `booking` (null for decline/cancel
 - Errors: 400 invalid request, 401 unauthenticated, 404 event/group not found, 409 business conflict or key reuse. Key conflicts never return someone else's booking.
 - Frontend retries preserve the request while the booking screen remains mounted. After reload, use My bookings to resolve an uncertain outcome; backend duplicate-booking protection remains effective.
 
-Event creation adds optional `capacity` (1–300, default 100) and `seatIdentifiersConfirmed` (default false). Event responses expose that boolean. The boolean is an organiser attestation, not a substitute for the team's pending venue-map/layout-version model.
+Event creation adds optional `capacity` (1–300, default 100) and `seatIdentifiersConfirmed` (default false). Event responses expose that boolean. Events start as drafts. Assigned-seating events must save a layout before publishing. The boolean is an organiser attestation, not proof that a campus demo profile is physically accurate.
 
-`GET /api/auth/me/bookings` is the existing private booking list. Existing close-registration/export routes remain unchanged; no allocation algorithm is implemented by this change.
+`GET /api/auth/me/bookings` is the private booking list. Closing registration synchronises the event's closed state. See [SEATING_API.md](SEATING_API.md) for persisted allocation, private tickets and anonymous exports.
 
 For final deployment: disable development seeds, configure secrets, replace snapshot framework dependencies with an agreed stable version, and replace automatic schema update with reviewed migrations. Demo configuration is not production hardening.
