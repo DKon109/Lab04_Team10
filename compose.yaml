@@ -28,7 +28,20 @@ services:
       DB_PASSWORD: ${MYSQL_PASSWORD:-tixora}
       TIXORA_CORS_ALLOWED_ORIGIN: http://localhost:${FRONTEND_PORT:-5173}
     ports:
-      - "${BACKEND_PORT:-8080}:8080"
+      - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080 &&
+          printf 'GET /api/events HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 &&
+          read -r status <&3 && [[ "$$status" == *"200"* ]]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
     depends_on:
       db:
         condition: service_healthy
@@ -40,9 +53,10 @@ services:
     environment:
       BACKEND_URL: http://backend:8080
     ports:
-      - "${FRONTEND_PORT:-5173}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   mysql-data:

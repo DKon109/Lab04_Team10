@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TopNav } from '../components/layout/TopNav';
-import { fetchMyEvents, setEventStatus } from '../api/organiserApi';
+import { fetchMyEvents } from '../api/organiserApi';
 import { formatEventDate } from '../utils/format';
 
 const STATUS_TABS = [
@@ -16,7 +16,6 @@ export function OrganiserDashboard() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState({});
 
   const reload = useCallback(() => {
     let cancelled = false;
@@ -44,33 +43,13 @@ export function OrganiserDashboard() {
     return cancel;
   }, [reload]);
 
-  async function handleStatusChange(eventId, newStatus) {
-    if (busy[eventId]) return;
-    setBusy((prev) => ({ ...prev, [eventId]: true }));
-    try {
-      const updated = await setEventStatus(eventId, newStatus);
-      setEvents((prev) =>
-        prev.map((ev) => (ev.id === updated.id ? updated : ev))
-      );
-    } catch (err) {
-      alert(err.message || 'Could not update the event.');
-    } finally {
-      setBusy((prev) => {
-        const next = { ...prev };
-        delete next[eventId];
-        return next;
-      });
-    }
-  }
-
   return (
     <>
       <TopNav />
       <main className="page">
-        <h1 className="page-heading">My events</h1>
+        <p className="eyebrow">ORGANISER WORKSPACE</p><h1 className="page-heading">Your events, from first idea to final seat.</h1>
         <p className="page-sub">
-          Manage what you've published. <Link to="/organiser">Back to posting</Link>{' '}
-          · <Link to="/organiser/new">Use the wizard</Link>
+          Manage your drafts, venue layouts and allocation. <Link to="/organiser/new" className="btn btn-primary">Create event +</Link>
         </p>
 
         <div className="segmented" role="tablist" aria-label="Filter by status">
@@ -118,7 +97,7 @@ export function OrganiserDashboard() {
         )}
 
         {!loading && !error && events.length > 0 && (
-          <div className="panel">
+          <div className="panel dashboard-table">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--line)' }}>
@@ -139,26 +118,7 @@ export function OrganiserDashboard() {
                       {formatEventDate(ev.dateTime)}
                     </td>
                     <td style={{ padding: '12px 8px', textAlign: 'right' }}>
-                      {ev.status === 'draft' && (
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          disabled={busy[ev.id]}
-                          onClick={() => handleStatusChange(ev.id, 'published')}
-                        >
-                          Publish
-                        </button>
-                      )}
-                      {ev.status === 'published' && (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          disabled={busy[ev.id]}
-                          onClick={() => handleStatusChange(ev.id, 'closed')}
-                        >
-                          Close
-                        </button>
-                      )}
+                      <Link className="btn btn-primary" to={`/organiser/events/${ev.id}`}>Manage event →</Link>
                     </td>
                   </tr>
                 ))}
