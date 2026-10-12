@@ -84,7 +84,9 @@ component changes are required in either direction.
 
 ## Sprint 2: Event management APIs (SCRUM-46 and SCRUM-47)
 
-These backend APIs are implemented. Frontend integration is pending.
+These backend APIs are implemented and connected to the organiser frontend.
+See the [backend handoff notes](docs/BACKEND_HANDOFF.md)
+for responsibilities and pending integration coordination.
 
 All management endpoints require a bearer token and the
 COMMITTEE_MEMBER role.
@@ -117,6 +119,8 @@ The permitted transitions are:
 - `published` to `closed`
 
 Publishing requires a future event date.
+If seatIdentifiersConfirmed is true, a saved seating layout is also
+required before publication. Otherwise, the API returns HTTP 409.
 Editing is permitted only while the event is a draft.
 Invalid transitions and editing a non-draft event return HTTP 409.
 
