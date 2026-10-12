@@ -37,6 +37,7 @@ import javax.print.attribute.standard.Media;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import com.ooaf.eventticketing.entity.EventRegistrationStatus;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -500,6 +501,7 @@ class LikesAndEventCreationApiTest {
         // Prepare a published event whose date has already passed.
         techEvent.setOwner(owner);
         techEvent.setStatus(EventStatus.PUBLISHED);
+        techEvent.setRegistrationStatus(EventRegistrationStatus.OPEN);
         techEvent.setDateTime(LocalDateTime.now().minusDays(1));
         Long eventId = eventRepository.saveAndFlush(techEvent).getId();
 
@@ -512,7 +514,8 @@ class LikesAndEventCreationApiTest {
         """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(eventId))
-                .andExpect(jsonPath("$.status").value("closed"));
+                .andExpect(jsonPath("$.status").value("closed"))
+                .andExpect(jsonPath("$.registrationStatus").value("CLOSED"));
 
         // Reload from the database to verify persistence.
         entityManager.flush();
@@ -520,6 +523,7 @@ class LikesAndEventCreationApiTest {
 
         Event closed = eventRepository.findById(eventId).orElseThrow();
         assertEquals(EventStatus.CLOSED, closed.getStatus());
+        assertEquals(EventRegistrationStatus.CLOSED, closed.getRegistrationStatus());
         assertEquals(owner.getId(), closed.getOwner().getId());
     }
 
