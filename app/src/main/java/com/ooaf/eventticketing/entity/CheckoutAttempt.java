@@ -30,6 +30,6 @@ public class CheckoutAttempt {
         this.fingerprint = fingerprint;
         this.outcome = outcome;
         this.bookingId = bookingId;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
     }
 }

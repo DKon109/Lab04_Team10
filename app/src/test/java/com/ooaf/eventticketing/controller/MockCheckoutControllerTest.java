@@ -31,7 +31,7 @@ class MockCheckoutControllerTest {
     @BeforeEach void seed() {
         attempts.deleteAll(); bookings.deleteAll(); events.deleteAll(); authenticationTokens.deleteAllInBatch(); users.deleteAll();
         var event = new Event("Checkout demo", "Demo", null, LocalDateTime.now().plusDays(2), "Hall", "Sydney", "USYD", "Society", OrganiserType.SOCIETY, "Social", List.of());
-        event.setCapacity(1); event.setSeatIdentifiersConfirmed(true); eventId = events.saveAndFlush(event).getId();
+        event.setCapacity(1); event.setStatus(EventStatus.PUBLISHED); event.setSeatIdentifiersConfirmed(true); eventId = events.saveAndFlush(event).getId();
         token = tokens.issueToken(users.saveAndFlush(new User("checkout@uni.sydney.edu.au", "unused", UserRole.STUDENT))).token();
         otherToken = tokens.issueToken(users.saveAndFlush(new User("other@uni.sydney.edu.au", "unused", UserRole.STUDENT))).token();
     }

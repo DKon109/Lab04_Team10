@@ -18,7 +18,7 @@ export default function MyBookingsPage() {
       <div className="ticket-stub" aria-hidden="true">T<span>ADMIT ONE</span></div><div className="ticket-content"><span className="badge">{statuses[booking.status] || booking.status}</span><h2>{booking.eventTitle}</h2><p className="reference">{booking.bookingRef}</p>
       {booking.groupCode && <p>Private group: <strong>{booking.groupCode}</strong></p>}{booking.accessibilityRequired && <p>Accessible seating requested</p>}
       {booking.status === 'PENDING_ALLOCATION' && <p className="subtle">Your booking is recorded. Seats are assigned after registration closes; no seat has been assigned yet.</p>}
-      <Link to={`/events/${booking.eventId}/book`} className="back-link">View event details →</Link></div>
+      <Link to={`/bookings/${booking.id}/ticket`} className="btn btn-primary">View ticket & seat map →</Link></div>
     </article>)}</div>}
   </main></>;
 }

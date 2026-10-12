@@ -5,6 +5,9 @@ import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { AuthPage } from './pages/AuthPage';
 import { EventsPage } from './pages/EventsPage';
 import { OrganiserPage } from './pages/OrganiserPage';
+import { OrganiserDashboard } from './pages/OrganiserDashboard';
+const EventSeatingPage = lazy(() => import('./pages/EventSeatingPage'));
+const TicketPage = lazy(() => import('./pages/TicketAndSeatMapView').then(module => ({ default: module.TicketAndSeatMapView })));
 const BookingPage = lazy(() => import('./pages/BookingPage'));
 const MyBookingsPage = lazy(() => import('./pages/MyBookingsPage'));
 function ScrollReset() {
@@ -19,6 +22,10 @@ export default function App() {
       <BrowserRouter>
         <ScrollReset />
         <Suspense fallback={<main className="page" role="status">Loading your next experience…</main>}><Routes>
+          <Route path="/bookings/:bookingId/ticket" element={<ProtectedRoute><TicketPage /></ProtectedRoute>} />
+          <Route path="/organiser/new" element={<ProtectedRoute role="COMMITTEE_MEMBER"><OrganiserPage /></ProtectedRoute>} />
+          <Route path="/organiser/events/:eventId/edit" element={<ProtectedRoute role="COMMITTEE_MEMBER"><OrganiserPage /></ProtectedRoute>} />
+          <Route path="/organiser/events/:eventId" element={<ProtectedRoute role="COMMITTEE_MEMBER"><EventSeatingPage /></ProtectedRoute>} />
           <Route path="/events/:eventId/book" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
           <Route path="/bookings" element={<ProtectedRoute><MyBookingsPage /></ProtectedRoute>} />
           <Route path="/auth" element={<AuthPage />} />
@@ -34,7 +41,7 @@ export default function App() {
             path="/organiser"
             element={
               <ProtectedRoute role="COMMITTEE_MEMBER">
-                <OrganiserPage />
+                <OrganiserDashboard />
               </ProtectedRoute>
             }
           />

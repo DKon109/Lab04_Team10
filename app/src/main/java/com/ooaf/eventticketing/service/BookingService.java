@@ -67,6 +67,7 @@ public class BookingService{
         Event event = requireEventForUpdate(eventId);
         requireCommitteeMemberForEvent(user, event);
         event.setRegistrationStatus(EventRegistrationStatus.CLOSED);
+        event.setStatus(EventStatus.CLOSED);
         long confirmedBookings = countActiveBookings(eventId);
         long groups = bookingRepository.findByEventIdOrderByCreatedAtAsc(eventId)
                 .stream()
@@ -98,13 +99,13 @@ public class BookingService{
         if(existingBooking.isPresent()){
             return handleIdempotentRetry(existingBooking.get(), eventId, user.getId());
         }
+        if (event.getRegistrationStatus() != EventRegistrationStatus.OPEN){
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Registration is closed for this event");
+        }
         // Only published events can accept new bookings.
         if (event.getStatus() != EventStatus.PUBLISHED) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, "Event not found: " + eventId);
-        }
-        if (event.getRegistrationStatus() != EventRegistrationStatus.OPEN){
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Registration is closed for this event");
         }
         if (!event.getDateTime().isAfter(java.time.LocalDateTime.now())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This event has already started");
@@ -173,6 +174,9 @@ public class BookingService{
 
     private void requireCommitteeMemberForEvent(User user, Event event){
         requireCommitteeMember(user);
+        if (event.getOwner() != null && !event.getOwner().getId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the event owner can manage its bookings");
+        }
         if (!sameSociety(user.getSocietyName(), event.getOrganiserName())){
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Committee member can only manage events for their society");
         }

@@ -42,14 +42,17 @@ public class SeatAllocationService {
         List<BookingGroup> groups = groupBookings(bookings);
         List<SeatAssignment> assignments = new ArrayList<>();
         List<GroupSplit> splits = new ArrayList<>();
+        long remainingAccessibleBookings = bookings.stream().filter(AllocationBooking::accessibilityRequired).count();
 
         for (BookingGroup group : groups) {
             List<AllocationSeat> currentSeats = new ArrayList<>(available.values());
-            List<AllocationSeat> selected = findContiguousBlock(group, currentSeats);
+            remainingAccessibleBookings -= accessibleCount(group);
+            long maxAccessible = accessibleCount(currentSeats) - remainingAccessibleBookings;
+            List<AllocationSeat> selected = findContiguousBlock(group, currentSeats, maxAccessible);
             boolean split = false;
 
             if (selected.isEmpty()) {
-                selected = findNearestCluster(group, currentSeats);
+                selected = findNearestCluster(group, currentSeats, maxAccessible);
                 split = group.groupCode() != null && group.bookings().size() > 1;
             }
 
@@ -145,7 +148,8 @@ public class SeatAllocationService {
 
     private List<AllocationSeat> findContiguousBlock(
             BookingGroup group,
-            List<AllocationSeat> seats
+            List<AllocationSeat> seats,
+            long maxAccessible
     ) {
         int size = group.bookings().size();
         long accessibleNeeded = accessibleCount(group);
@@ -160,7 +164,7 @@ public class SeatAllocationService {
         for (List<AllocationSeat> row : rows.values()) {
             for (int start = 0; start + size <= row.size(); start++) {
                 List<AllocationSeat> block = row.subList(start, start + size);
-                if (isConsecutive(block) && accessibleCount(block) >= accessibleNeeded) {
+                if (isConsecutive(block) && accessibleCount(block) >= accessibleNeeded && accessibleCount(block) <= maxAccessible) {
                     candidates.add(List.copyOf(block));
                 }
             }
@@ -189,7 +193,8 @@ public class SeatAllocationService {
 
     private List<AllocationSeat> findNearestCluster(
             BookingGroup group,
-            List<AllocationSeat> seats
+            List<AllocationSeat> seats,
+            long maxAccessible
     ) {
         int size = group.bookings().size();
         long accessibleNeeded = accessibleCount(group);
@@ -198,7 +203,7 @@ public class SeatAllocationService {
 
         for (int start = 0; start + size <= ordered.size(); start++) {
             List<AllocationSeat> cluster = List.copyOf(ordered.subList(start, start + size));
-            if (accessibleCount(cluster) >= accessibleNeeded) {
+            if (accessibleCount(cluster) >= accessibleNeeded && accessibleCount(cluster) <= maxAccessible) {
                 candidates.add(new ClusterCandidate(cluster, clusterPenalty(cluster)));
             }
         }
@@ -221,9 +226,12 @@ public class SeatAllocationService {
                 .limit(accessibleNeeded)
                 .toList());
         ordered.stream()
+                .filter(seat -> !seat.accessible())
                 .filter(seat -> !fallback.contains(seat))
                 .limit(size - fallback.size())
                 .forEach(fallback::add);
+        ordered.stream().filter(AllocationSeat::accessible).filter(seat -> !fallback.contains(seat))
+                .limit(size - fallback.size()).forEach(fallback::add);
         return fallback.stream().sorted(SEAT_ORDER).toList();
     }
 
