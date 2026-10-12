@@ -26,6 +26,7 @@ public class EventResponse {
     Integer likeCount;
     Integer capacity;
     EventRegistrationStatus registrationStatus;
+    boolean seatIdentifiersConfirmed;
 
     public static EventResponse fromEntity(Event event) {
         return fromEntity(event, false, 0L);
@@ -36,6 +37,6 @@ public class EventResponse {
                 event.getId(), event.getTitle(), event.getDescription(), event.getImageUrl(),
                 event.getDateTime(), event.getVenue(), event.getCity(), event.getUniversity(),
                 event.getOrganiserName(), event.getOrganiserType(), event.getCategory(),
-                event.getTags(), likedByMe, Math.toIntExact(likeCount), event.getCapacity(), event.getRegistrationStatus());
+                event.getTags(), likedByMe, Math.toIntExact(likeCount), event.getCapacity(), event.getRegistrationStatus(), event.isSeatIdentifiersConfirmed());
     }
 }

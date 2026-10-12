@@ -62,6 +62,8 @@ public class EventService {
                 request.category().trim(),
                 request.tags() == null ? new ArrayList<>() : new ArrayList<>(request.tags())
         );
+        if (request.capacity() != null) event.setCapacity(request.capacity());
+        event.setSeatIdentifiersConfirmed(Boolean.TRUE.equals(request.seatIdentifiersConfirmed()));
         return EventResponse.fromEntity(eventRepository.save(event), false, 0);
     }
 

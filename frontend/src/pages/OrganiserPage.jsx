@@ -14,12 +14,13 @@ const EMPTY_FORM = {
   imageUrl: '',
   description: '',
   tags: '',
+  capacity: 100,
+  seatIdentifiersConfirmed: false,
 };
 
 /**
- * Sprint 1 organiser dashboard: posting events works end-to-end; the
- * attendees panel is a deliberate placeholder until the booking workflow
- * (a future sprint) exists.
+ * Event publishing surface. The dedicated venue/allocation dashboard is
+ * maintained separately and is not represented as complete here.
  */
 export function OrganiserPage() {
   const [form, setForm] = useState(EMPTY_FORM);
@@ -49,6 +50,8 @@ export function OrganiserPage() {
         organiserType: form.organiserType,
         imageUrl: form.imageUrl || null,
         description: form.description || null,
+        capacity: Number(form.capacity),
+        seatIdentifiersConfirmed: form.seatIdentifiersConfirmed,
         tags: form.tags
           .split(',')
           .map((t) => t.trim().toLowerCase())
@@ -171,6 +174,9 @@ export function OrganiserPage() {
                 {fieldError('imageUrl')}
               </div>
 
+              <label className="field">Capacity (1–300)<input type="number" min="1" max="300" required value={form.capacity} onChange={update('capacity')} />{fieldError('capacity')}</label>
+              <label className="check-label"><input type="checkbox" checked={form.seatIdentifiersConfirmed} onChange={e => setForm(previous => ({ ...previous, seatIdentifiersConfirmed: e.target.checked }))} /><span>I confirm permanent or temporary physical seat identifiers will be available at this venue.<span className="subtle">Required for private group booking. Leave unchecked for general admission; this does not create a seat map or run allocation.</span></span></label>
+
               <div className="field">
                 <label htmlFor="ev-description">Description</label>
                 <textarea
@@ -200,14 +206,17 @@ export function OrganiserPage() {
           </section>
 
           <section className="panel placeholder-panel" aria-labelledby="attendees-heading">
-            <h2 id="attendees-heading">Attendees</h2>
+            <p className="eyebrow">SPRINT 3 · ATTENDEE EXPERIENCE</p>
+            <h2 id="attendees-heading">From discovery to confirmed plans.</h2>
             <p>
-              Once ticket booking ships in a later sprint, you'll see everyone attending your
-              events here — live headcounts, check-in status and more.
+              Attendees can now book individually or with a private group, complete mock
+              checkout and review their booking status in My bookings.
             </p>
             <p>
-              <em>Nothing to show yet: the booking workflow isn't part of Sprint 1.</em>
+              Organiser venue mapping, allocation controls and seat-map tickets still require
+              integration with the team's dedicated dashboard. Checkout does not assign seats.
             </p>
+            <Link className="btn btn-primary" to="/events">Preview attendee experience →</Link>
           </section>
         </div>
       </main>

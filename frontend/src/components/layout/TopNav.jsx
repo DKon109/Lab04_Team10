@@ -33,6 +33,8 @@ export function TopNav({ activeTab, onTabChange }) {
         )}
 
         <div className="nav-user">
+          {!onTabChange && <Link to="/events" className="organiser-link">Discover</Link>}
+          <Link to="/bookings" className="organiser-link">My bookings</Link>
           {user?.role === 'COMMITTEE_MEMBER' && (
             <Link to="/organiser" className="organiser-link">
               Organiser dashboard
