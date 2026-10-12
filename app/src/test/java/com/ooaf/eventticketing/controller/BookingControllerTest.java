@@ -9,6 +9,7 @@ import com.ooaf.eventticketing.repository.BookingRepository;
 import com.ooaf.eventticketing.repository.EventRepository;
 import com.ooaf.eventticketing.repository.UserRepository;
 import com.ooaf.eventticketing.service.TokenService;
+import com.ooaf.eventticketing.entity.EventStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +31,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -69,6 +71,7 @@ public class BookingControllerTest{
                 OrganiserType.SOCIETY, "Technology", List.of("hackathon", "coding"));
         event.setCapacity(2);
         event.setSeatIdentifiersConfirmed(true);
+        event.setStatus(EventStatus.PUBLISHED);
         eventId = eventRepository.saveAndFlush(event).getId();
         studentToken = tokenFor(
                 "booking.student@uni.sydney.edu.au",
@@ -128,6 +131,44 @@ public class BookingControllerTest{
                         .header(HttpHeaders.AUTHORIZATION, bearer(studentToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
+    void studentCannotBookDraftEvent() throws Exception {
+        Event event = eventRepository.findById(eventId).orElseThrow();
+        event.setStatus(EventStatus.DRAFT);
+        eventRepository.saveAndFlush(event);
+
+        // Reject a new booking for an unpublished draft.
+        mockMvc.perform(post("/api/events/{eventId}/bookings", eventId)
+                .header(HttpHeaders.AUTHORIZATION, bearer(studentToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"idempotencyKey": "draft-booking"}
+                        """))
+                .andExpect(status().isNotFound());
+
+        assertTrue(bookingRepository
+                .findByIdempotencyKey("draft-booking").isEmpty());
+    }
+
+    @Test
+    void studentCannotBookClosedEvent() throws Exception {
+        Event event = eventRepository.findById(eventId).orElseThrow();
+        event.setStatus(EventStatus.CLOSED);
+        eventRepository.saveAndFlush(event);
+
+        // Reject a new booking even if registration is still marked open.
+        mockMvc.perform(post("/api/events/{eventId}/bookings", eventId)
+        .header(HttpHeaders.AUTHORIZATION, bearer(studentToken))
+        .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"idempotencyKey": "closed-booking"}
+                        """))
+                .andExpect(status().isNotFound());
+
+        assertTrue(bookingRepository
+                .findByIdempotencyKey("closed-booking").isEmpty());
     }
 
     @Test
