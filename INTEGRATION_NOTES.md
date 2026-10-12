@@ -138,8 +138,8 @@ New bookings require a published event and open registration.
 An idempotent retry may return an existing booking.
 
 Event status and registrationStatus are separate fields.
-Changing event status to closed does not update registrationStatus,
-but new bookings are rejected because the event is no longer published.
+Closing a published event through the event status API also sets
+registrationStatus to CLOSED, preventing new bookings.
 
 ### Frontend handoff
 
@@ -147,3 +147,11 @@ Aadi owns the organiser screen integration.
 Event creation saves a draft; it does not publish the event.
 Use the organiser endpoint to retrieve drafts and the status endpoint
 to publish or close them.
+
+### Seating integration
+
+Use [the seating API specification](docs/SEATING_API.md) for layout
+configuration, allocation, tickets, and exports.
+
+The supported external templates are FRONT, FAN, and CENTRAL.
+Campus profiles are demonstration data and still require physical verification.
