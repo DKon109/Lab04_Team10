@@ -21,6 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test") @Transactional
 class SeatingIntegrationTest {
     @Autowired SeatingService seating;
+    @Autowired SeatingMapManagementService managedSeating;
     @Autowired MockCheckoutService checkout;
     @Autowired EventService eventService;
     @Autowired EventRepository events;
@@ -42,6 +43,25 @@ class SeatingIntegrationTest {
     }
     SeatingLayoutRequest layout(boolean identified, List<String> accessible) {
         return new SeatingLayoutRequest(SeatingLayoutRequest.Source.EXTERNAL, SeatingLayoutRequest.Template.FRONT, null, 2, 4, 2, List.of("B4"), accessible, identified);
+    }
+    SeatMapRequest managedMap(boolean attendeesChooseSeats) {
+        var seats = List.of(
+                new SeatMapRequest.SeatRequest("A1", "A1", "Wheelchair position", "Stalls", "A", 0, 1,
+                        10, 20, true, false, false, List.of("Standard")),
+                new SeatMapRequest.SeatRequest("A2", "A2", null, "Stalls", "A", 0, 2,
+                        20, 20, false, false, false, List.of("Standard")));
+        var privateSeats = List.of(
+                new SeatMapRequest.SeatRequest("VIP-PRIVATE-1", "VIP 1", null, "VIP", "T1", 1, 1,
+                        50, 50, false, false, false, List.of("VIP")));
+        return new SeatMapRequest("Main auditorium", attendeesChooseSeats, true,
+                Map.of("Standard", 99, "VIP", 99),
+                List.of(
+                        new SeatMapRequest.ElementRequest("row-a", SeatingElementType.ROW, "Row A", null,
+                                0, 0, 0, 0, false, seats),
+                        new SeatMapRequest.ElementRequest("vip-table", SeatingElementType.ROUND_TABLE, "VIP table", null,
+                                50, 50, 0, 1, true, privateSeats),
+                        new SeatMapRequest.ElementRequest("stage", SeatingElementType.OBJECT, "Stage", null,
+                                0, -20, 0, 2, false, List.of())));
     }
     BookingResponse book(String email, boolean create, String group, boolean accessible) {
         return checkout.checkout(eventId, email, new MockCheckoutRequest(create, group, accessible, UUID.randomUUID().toString(), MockCheckoutRequest.Outcome.SUCCESS)).booking();
@@ -108,6 +128,70 @@ class SeatingIntegrationTest {
             assertEquals(profile.rows() * profile.seatsPerRow(), result.layout().seats().size());
             assertEquals("CAMPUS_DEMO", result.layout().source());
         }
+    }
+    @Test void managedMapPersistsElementsMappingsPrivateSeatsAndAutoMatchedCapacity() {
+        var view = managedSeating.saveMap(eventId, ownerEmail, managedMap(true));
+
+        assertEquals(3, view.totalSeats());
+        assertEquals(2, view.publicCapacity());
+        assertEquals(2, events.findById(eventId).orElseThrow().getCapacity());
+        assertEquals(3, view.elements().size());
+        assertEquals(2, view.ticketTypes().stream()
+                .filter(type -> type.code().equals("STANDARD")).findFirst().orElseThrow().configuredCapacity());
+        assertEquals(0, view.ticketTypes().stream()
+                .filter(type -> type.code().equals("VIP")).findFirst().orElseThrow().configuredCapacity());
+        assertEquals(SeatingMapManagementService.SeatStatus.PRIVATE,
+                view.elements().stream().filter(element -> element.key().equals("vip-table"))
+                        .findFirst().orElseThrow().seats().get(0).status());
+    }
+    @Test void attendeesCanChooseOnlyCompatibleAvailableSeatsWithoutLeakingBookingDetails() {
+        managedSeating.saveMap(eventId, ownerEmail, managedMap(true));
+        publish();
+        var accessibleBooking = book(studentEmail, false, null, true);
+        var standardBooking = book(friendEmail, false, null, false);
+
+        assertEquals("A1", managedSeating.chooseSeat(accessibleBooking.id(), studentEmail,
+                new SeatAssignmentRequest("a1")).seatCode());
+        assertEquals("A2", managedSeating.chooseSeat(standardBooking.id(), friendEmail,
+                new SeatAssignmentRequest("A2")).seatCode());
+        assertEquals(409, assertThrows(ResponseStatusException.class,
+                () -> managedSeating.chooseSeat(standardBooking.id(), friendEmail,
+                        new SeatAssignmentRequest("A1"))).getStatusCode().value());
+        assertEquals(409, assertThrows(ResponseStatusException.class,
+                () -> managedSeating.chooseSeat(standardBooking.id(), friendEmail,
+                        new SeatAssignmentRequest("VIP-PRIVATE-1"))).getStatusCode().value());
+
+        var publicMap = managedSeating.attendeeMap(eventId);
+        assertTrue(publicMap.elements().stream().flatMap(element -> element.seats().stream())
+                .filter(seat -> seat.status() == SeatingMapManagementService.SeatStatus.ASSIGNED)
+                .allMatch(seat -> seat.assignedBookingId() == null && seat.assignedBookingReference() == null));
+        assertEquals(2, managedSeating.organiserMap(eventId, ownerEmail).assignedSeats());
+    }
+    @Test void managedMapRejectsDuplicateSeatCodesAndUnknownTicketMappings() {
+        var first = new SeatMapRequest.SeatRequest("A1", "A1", null, "Stalls", "A", 0, 1,
+                0, 0, false, false, false, List.of("UNKNOWN"));
+        var duplicate = new SeatMapRequest.SeatRequest("a1", "A1 duplicate", null, "Stalls", "A", 0, 2,
+                10, 0, false, false, false, List.of("STANDARD"));
+        var request = new SeatMapRequest("Invalid map", true, false, Map.of("STANDARD", 2),
+                List.of(new SeatMapRequest.ElementRequest("row-a", SeatingElementType.ROW, "Row A", null,
+                        0, 0, 0, 0, false, List.of(first, duplicate))));
+
+        assertEquals(400, assertThrows(ResponseStatusException.class,
+                () -> managedSeating.saveMap(eventId, ownerEmail, request)).getStatusCode().value());
+    }
+    @Test void organiserCanAssignMoveAndRemoveAConfirmedBookingSeat() {
+        managedSeating.saveMap(eventId, ownerEmail, managedMap(false));
+        publish();
+        var booking = book(studentEmail, false, null, false);
+
+        assertEquals("A2", managedSeating.assignByOrganiser(eventId, booking.id(), ownerEmail,
+                new SeatAssignmentRequest("A2")).seatCode());
+        assertEquals("VIP-PRIVATE-1", managedSeating.assignByOrganiser(eventId, booking.id(), ownerEmail,
+                new SeatAssignmentRequest("VIP-PRIVATE-1")).seatCode());
+        assertNull(managedSeating.assignByOrganiser(eventId, booking.id(), ownerEmail,
+                new SeatAssignmentRequest(null)).seatCode());
+        assertEquals(BookingStatus.PENDING_ALLOCATION,
+                bookings.findById(booking.id()).orElseThrow().getStatus());
     }
     @Test void persistsThreeHundredUniqueSeatsWithinTenSeconds() {
         seating.configure(eventId, ownerEmail, new SeatingLayoutRequest(SeatingLayoutRequest.Source.EXTERNAL,
