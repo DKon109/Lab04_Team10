@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.MediaType;
 import java.time.LocalDateTime;
 import java.util.*;
+import jakarta.persistence.EntityManager;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -32,6 +33,7 @@ class SeatingIntegrationTest {
     @Autowired CheckoutAttemptRepository attempts;
     @Autowired TokenService tokens;
     @Autowired MockMvc mvc;
+    @Autowired EntityManager entityManager;
     Long eventId; String ownerEmail, studentEmail, friendEmail; User student, friend;
     @BeforeEach void seed() {
         String suffix = UUID.randomUUID().toString();
@@ -59,6 +61,17 @@ class SeatingIntegrationTest {
         assertNull(seating.ticket(first.id(), studentEmail).seatCode());
         close(); var run = seating.allocate(eventId, ownerEmail);
         assertEquals(2, run.getBookingCount()); assertEquals(0, run.getSplitGroupCount());
+
+        // Flush pending writes and reload data without the persistence context cache.
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = seating.management(eventId, ownerEmail);
+        assertEquals(config.layout(), reloaded.layout());
+        assertEquals("closed", reloaded.event().getStatus());
+        assertEquals(EventRegistrationStatus.CLOSED, reloaded.event().getRegistrationStatus());
+        assertEquals(2, reloaded.allocation().getBookingCount());
+
         var ticket = seating.ticket(first.id(), studentEmail);
         assertEquals("A1", ticket.seatCode()); assertEquals("A2", seating.ticket(second.id(), friendEmail).seatCode());
         assertEquals(BookingStatus.ALLOCATED, ticket.booking().status());
