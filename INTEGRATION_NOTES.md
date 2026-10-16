@@ -34,8 +34,8 @@ real `likedByMe`/`likeCount`.
   panel is still a placeholder.
 - Organiser self-service accounts are not implemented. Registration
   creates STUDENT users; organiser access uses configured committee accounts.
-- Owner-only draft editing is implemented in the backend. Connecting
-  the organiser screens to the event management APIs remains frontend work.
+- Organiser screens are connected to draft creation/editing and event publication/closure APIs.
+  End-to-end verification with verified physical venue layouts and the incoming seating implementation remains pending.
 - Event deletion is not implemented.
 
 ## Blockers for the backend team
