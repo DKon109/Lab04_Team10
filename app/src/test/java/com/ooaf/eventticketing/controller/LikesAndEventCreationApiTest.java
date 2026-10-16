@@ -560,6 +560,40 @@ class LikesAndEventCreationApiTest {
     }
 
     @Test
+    void organiserCannotCloseAnotherOrganiserEvent() throws Exception {
+        User otherOwner = userRepository.save(new User(
+                "close-other@test.local",
+                passwordEncoder.encode("password123"),
+                UserRole.COMMITTEE_MEMBER
+        ));
+
+        // Prepare an open, published event owned by another organiser.
+        techEvent.setOwner(otherOwner);
+        techEvent.setStatus(EventStatus.PUBLISHED);
+        techEvent.setRegistrationStatus(EventRegistrationStatus.OPEN);
+        techEvent.setDateTime(LocalDateTime.now().plusDays(5));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Attempt to close the event as a non-owner.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+                .header("Authorization", "Bearer " + organiserToken)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+                        {"status": "closed"}
+        """))
+                .andExpect(status().isForbidden());
+
+        // Reload to verify that the rejected request changed nothing.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event unchanged = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.PUBLISHED, unchanged.getStatus());
+        assertEquals(EventRegistrationStatus.OPEN, unchanged.getRegistrationStatus());
+        assertEquals(otherOwner.getId(), unchanged.getOwner().getId());
+    }
+
+    @Test
     void organiserCannotPublishPastDraftEvent() throws Exception {
         User owner = userRepository.findByEmail("organiser@test.local")
                 .orElseThrow();
