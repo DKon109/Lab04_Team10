@@ -95,7 +95,8 @@ public class SecurityConfig {
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/events",
-                                "/api/events/*"
+                                "/api/events/*",
+                                "/api/events/*/seat-map"
                         ).permitAll()
                         .requestMatchers("/api/organiser/**")
                         .hasRole("COMMITTEE_MEMBER")
