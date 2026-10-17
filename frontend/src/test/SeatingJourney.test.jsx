@@ -40,6 +40,31 @@ describe('persisted seating experience', () => {
     expect(screen.queryByText('Alex')).not.toBeInTheDocument();
     expect(api.fetchTicket).toHaveBeenCalledWith('5');
   });
+  it('renders a managed map and identifies the attendee seat', async () => {
+    api.fetchTicket.mockResolvedValue({ booking: { eventTitle: 'Film night', bookingRef: 'BKG-123', status: 'ALLOCATED' },
+      paymentStatus: 'MOCK_SUCCESS', seatCode: 'A2', generalAdmission: false, eventDate: '2099-01-01T18:00:00', venue: 'Demo hall', layout: null,
+      managedMap: { name: 'Main auditorium', version: 2, elements: [
+        { key: 'row-a', label: 'Row A', positionX: 0, positionY: 0, rotationDegrees: 0, seats: [
+          { code: 'A1', label: 'A1', positionX: 10, positionY: 20, accessible: true, status: 'AVAILABLE' },
+          { code: 'A2', label: 'A2', positionX: 20, positionY: 20, accessible: false, status: 'ASSIGNED' }
+        ] },
+        { key: 'stage', label: 'Stage', positionX: 0, positionY: -20, rotationDegrees: 0, seats: [] }
+      ] } });
+    renderTicket();
+    expect(await screen.findByRole('img', { name: 'Seat map: Main auditorium. Your seat is A2.' })).toBeInTheDocument();
+    expect(screen.getByText('Stage')).toBeInTheDocument();
+    expect(screen.getByText('A1 · Accessible · AVAILABLE')).toBeInTheDocument();
+    expect(screen.getByText('A2 · Your seat · ASSIGNED')).toBeInTheDocument();
+    expect(screen.queryByText('The organiser has not saved a seat map yet.')).not.toBeInTheDocument();
+  });
+  it('continues to render legacy ticket layouts', async () => {
+    api.fetchTicket.mockResolvedValue({ booking: { eventTitle: 'Film night', bookingRef: 'BKG-123', status: 'ALLOCATED' },
+      paymentStatus: 'MOCK_SUCCESS', seatCode: 'A1', generalAdmission: false, eventDate: '2099-01-01T18:00:00', venue: 'Demo hall',
+      layout: { template: 'FRONT', rows: 1, seatsPerRow: 1, aisleAfter: 0, version: 1,
+        seats: [{ code: 'A1', row: 0, column: 1, accessible: false, blocked: false }] } });
+    renderTicket();
+    expect(await screen.findByRole('img', { name: /Seat map. Your seat is A1/ })).toBeInTheDocument();
+  });
   it('does not invent an assigned seat while allocation is pending', async () => {
     api.fetchTicket.mockResolvedValue({ booking: { eventTitle: 'Film night', bookingRef: 'BKG-123', status: 'PENDING_ALLOCATION' }, paymentStatus: 'MOCK_SUCCESS', seatCode: null, generalAdmission: false, eventDate: '2099-01-01T18:00:00', venue: 'Demo hall', layout: null });
     renderTicket(); expect(await screen.findByText(/No seat has been assigned yet/)).toBeInTheDocument();

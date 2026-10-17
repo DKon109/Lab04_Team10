@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { TopNav } from '../components/layout/TopNav';
+import { ManagedSeatMap } from '../components/ManagedSeatMap';
 import { SeatMap } from '../components/SeatMap';
 import { fetchTicket } from '../api/seatingApi';
 import { formatEventDate } from '../utils/format';
@@ -24,6 +25,6 @@ export function TicketAndSeatMapView() {
       {ticket.booking.accessibilityRequired && <p>Accessible seating requested</p>}
       {ticket.booking.status === 'ALLOCATED' ? <><p className="eyebrow">{ticket.generalAdmission ? 'ADMISSION' : 'YOUR ASSIGNED SEAT'}</p><p className="assigned-seat">{ticket.generalAdmission ? 'General admission' : ticket.seatCode}</p>{ticket.splitReason && <div className="form-banner error"><strong>Your group is split.</strong><p>{ticket.splitReason}</p></div>}</> : <p className="form-banner success">{ticket.booking.status === 'CANCELLED' ? 'This booking is cancelled.' : 'Waiting for the organiser to close registration and run allocation. No seat has been assigned yet.'}</p>}
       <button className="btn btn-ghost" onClick={() => setVersion(v => v + 1)}>Refresh ticket status</button><p className="subtle">Demo ticket · no real charge. Only your own booking details are shown.</p>
-    </section><section className="panel checkout-panel"><h2>{ticket.generalAdmission ? 'General admission' : 'Find your seat'}</h2>{ticket.generalAdmission ? <p>This event does not assign physical seats. Follow the organiser's arrival instructions.</p> : ticket.layout ? <SeatMap layout={ticket.layout} selectedCode={ticket.seatCode} /> : <p>The organiser has not saved a seat map yet.</p>}</section></div>}
+    </section><section className="panel checkout-panel"><h2>{ticket.generalAdmission ? 'General admission' : 'Find your seat'}</h2>{ticket.generalAdmission ? <p>This event does not assign physical seats. Follow the organiser's arrival instructions.</p> : ticket.managedMap ? <ManagedSeatMap map={ticket.managedMap} selectedCode={ticket.seatCode} /> : ticket.layout ? <SeatMap layout={ticket.layout} selectedCode={ticket.seatCode} /> : <p>The organiser has not saved a seat map yet.</p>}</section></div>}
   </main></>;
 }
