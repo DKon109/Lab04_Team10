@@ -251,6 +251,10 @@ class SeatingIntegrationTest {
         close();
         seating.allocate(eventId, ownerEmail);
 
+        // Reload the managed map and ticket from the database.
+        entityManager.flush();
+        entityManager.clear();
+
         var ticket = seating.ticket(booking.id(), studentEmail);
         assertNull(ticket.layout());
         assertNotNull(ticket.managedMap());
