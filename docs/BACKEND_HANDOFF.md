@@ -1,6 +1,6 @@
 # Event and Venue Backend Handoff
 
-Last updated: 13 October 2026
+Last updated: 17 October 2026
 
 ## Responsibilities
 
@@ -32,11 +32,36 @@ shared DTOs, entities and services before editing them.
 - Follow the existing seating API contract for layout configuration.
 - Campus demo profiles must not be treated as verified physical layouts.
 
+## Persistence regression test
+
+Run from the `app` directory against a dedicated test database:
+
+```bash
+DB_URL='jdbc:mysql://localhost:3306/eventticketingsystemtest?useSSL=false&serverTimezone=UTC' \
+DB_USERNAME=root \
+DB_PASSWORD='' \
+./mvnw -Dtest=GeneralAdmissionPersistenceTest test
+```
+
+Use your local test database credentials. The test profile uses
+`create-drop`, so do not point it at a development or production database.
+
+`GeneralAdmissionPersistenceTest` verifies that a general admission
+booking, mock payment confirmation and allocation result can be retrieved
+in a separate transaction after commit. Retrying allocation preserves
+the original completion timestamp and does not create another booking.
+
+The test removes its committed fixture data in a `finally` block.
+It does not verify application restart or physical seating layouts.
+
 ## Pending coordination
 
-- Await the seating implementation and specification being prepared
-  by team members before changing venue data or layout formats.
-- Confirm physical room mappings before replacing campus demo profiles.
+- Await Rafly's managed seating implementation and proposed USYD
+  venue templates before adding competing layout formats or templates.
+- Verify the source and physical room mapping of supplied templates
+  before treating them as confirmed venue layouts.
+- Resolve managed-map ticket display and post-allocation seat removal
+  behaviour raised in PR #14 before relying on that integration.
 - Coordinate existing-data and schema compatibility with Sathish.
-- Verify the integrated organiser workflow and persisted state
-  after the shared changes are available.
+- Verify event ownership, publication, booking, allocation and ticket
+  retrieval against the agreed seating model after integration.
