@@ -1,6 +1,6 @@
 # Event and Venue Backend Handoff
 
-Last updated: 17 October 2026
+Last updated: 18 October 2026
 
 ## Responsibilities
 
@@ -20,6 +20,7 @@ shared DTOs, entities and services before editing them.
 - [Authentication API](../AUTH_API.md)
 - [Seating API](SEATING_API.md)
 - [Mock checkout API](MOCK_CHECKOUT_API.md)
+- [Managed seating map API](SEATING_MAP_MANAGEMENT_API.md)
 
 ## Integration rules
 
@@ -54,14 +55,29 @@ the original completion timestamp and does not create another booking.
 The test removes its committed fixture data in a `finally` block.
 It does not verify application restart or physical seating layouts.
 
+## Managed seating integration
+
+- PR #14 is merged. Reuse the managed seating implementation rather
+  than introducing another map format.
+- Ticket responses include `managedMap` for managed seating maps.
+  The ticket frontend supports both managed maps and legacy layouts.
+- Seat removal after allocation is rejected. Moving a booking to a
+  valid replacement seat remains supported.
+- Managed maps require explicit `identifiersConfirmed: true` before
+  physical seats can be assigned.
+- Regression coverage checks that another organiser cannot delete
+  a managed map and that published maps cannot be replaced or deleted.
+- The managed-map ticket test flushes and clears the persistence
+  context before checking ticket retrieval and booking privacy.
+  This verifies database reload within one transaction, not an
+  application restart.
+
 ## Pending coordination
 
-- Await Rafly's managed seating implementation and proposed USYD
-  venue templates before adding competing layout formats or templates.
+- Await Rafly's proposed USYD venue templates before adding
+  competing venue templates.
 - Verify the source and physical room mapping of supplied templates
   before treating them as confirmed venue layouts.
-- Resolve managed-map ticket display and post-allocation seat removal
-  behaviour raised in PR #14 before relying on that integration.
 - Coordinate existing-data and schema compatibility with Sathish.
-- Verify event ownership, publication, booking, allocation and ticket
-  retrieval against the agreed seating model after integration.
+- Verify the complete organiser and attendee workflows with the
+  supplied venue templates once they are integrated.
