@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 
 @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test") @Transactional
 class SeatingIntegrationTest {
@@ -455,5 +456,72 @@ class SeatingIntegrationTest {
         assertEquals(original.layout(), current.layout());
         assertEquals(original.event().getCapacity(),
                 current.event().getCapacity());
+    }
+
+    @Test
+    void anotherOrganiserCannotDeleteManagedMap() throws Exception {
+        var original = managedSeating.saveMap(
+                eventId, ownerEmail, managedMap(false)
+        );
+        Integer originalCapacity = events.findById(eventId).orElseThrow().getCapacity();
+
+        var otherOwner = users.saveAndFlush(new User(
+                "other-owner-" + UUID.randomUUID() + "@test.local",
+                "unused",
+                UserRole.COMMITTEE_MEMBER,
+                "Demo society"
+        ));
+        String token = tokens.issueToken(otherOwner).token();
+
+        mvc.perform(delete("/api/organiser/events/{id}/seat-map", eventId
+        ).header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+
+        //Reload to verify that the rejected request changed nothing.
+        entityManager.flush();
+        entityManager.clear();
+
+        assertEquals(
+                original,
+                managedSeating.organiserMap(eventId, ownerEmail)
+        );
+        var unchanged = events.findById(eventId).orElseThrow();
+        assertEquals(originalCapacity, unchanged.getCapacity());
+        assertTrue(unchanged.isSeatIdentifiersConfirmed());
+    }
+
+    @Test
+    void publishedManagedMapCannotBeReplacedOrDeleted() {
+        var original = managedSeating.saveMap(
+                eventId, ownerEmail, managedMap(false)
+        );
+        Integer originalCapacity = events.findById(eventId).orElseThrow().getCapacity();
+        publish();
+
+        var replacementError = assertThrows(
+                ResponseStatusException.class, () -> managedSeating.saveMap(
+                        eventId, ownerEmail, managedMap(true)
+                )
+        );
+        assertEquals(409, replacementError.getStatusCode().value());
+
+        var deletionError = assertThrows(
+                ResponseStatusException.class,
+                () -> managedSeating.deleteMap(eventId, ownerEmail)
+        );
+        assertEquals(409, deletionError.getStatusCode().value());
+
+        // Reload to verify that both rejected operations preserved the map.
+        entityManager.flush();
+        entityManager.clear();
+
+        assertEquals(
+                original,
+                managedSeating.organiserMap(eventId, ownerEmail)
+        );
+        var unchanged = events.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.PUBLISHED, unchanged.getStatus());
+        assertEquals(originalCapacity, unchanged.getCapacity());
+        assertTrue(unchanged.isSeatIdentifiersConfirmed());
     }
 }
