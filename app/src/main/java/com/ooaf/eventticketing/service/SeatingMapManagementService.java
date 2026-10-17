@@ -206,7 +206,8 @@ public class SeatingMapManagementService {
         if (seat.isBlocked()) throw conflict("Seat is blocked");
         if (!organiser && seat.isPrivateSeat()) throw conflict("Seat is private");
         if (!organiser && ticketTypes(seat).isEmpty()) throw conflict("Seat is not mapped to a ticket type");
-        if (!organiser && booking.isAccessibilityRequired() != seat.isAccessible()) {
+        if ((booking.isAccessibilityRequired() && !seat.isAccessible())
+                || (!organiser && !booking.isAccessibilityRequired() && seat.isAccessible())) {
             throw conflict(booking.isAccessibilityRequired()
                     ? "Choose an accessible seat" : "Accessible seats are reserved for accessibility requests");
         }

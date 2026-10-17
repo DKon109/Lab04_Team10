@@ -302,6 +302,20 @@ class SeatingIntegrationTest {
         assertFalse(events.findById(eventId).orElseThrow().isSeatIdentifiersConfirmed());
     }
 
+    @Test void organiserCannotAssignOrMoveAccessibilityBookingToRegularSeat() {
+        managedSeating.saveMap(eventId, ownerEmail, managedMap(false)); publish();
+        var booking = book(studentEmail, false, null, true);
+        assertEquals(409, assertThrows(ResponseStatusException.class, () -> managedSeating.assignByOrganiser(
+                eventId, booking.id(), ownerEmail, new SeatAssignmentRequest("A2"))).getStatusCode().value());
+        assertEquals(BookingStatus.PENDING_ALLOCATION, bookings.findById(booking.id()).orElseThrow().getStatus());
+        assertNull(bookings.findById(booking.id()).orElseThrow().getSeatCode());
+        close(); seating.allocate(eventId, ownerEmail);
+        assertEquals("A1", seating.ticket(booking.id(), studentEmail).seatCode());
+        assertEquals(409, assertThrows(ResponseStatusException.class, () -> managedSeating.assignByOrganiser(
+                eventId, booking.id(), ownerEmail, new SeatAssignmentRequest("VIP-PRIVATE-1"))).getStatusCode().value());
+        assertEquals("A1", seating.ticket(booking.id(), studentEmail).seatCode());
+    }
+
     @Test void persistsThreeHundredUniqueSeatsWithinTenSeconds() {
         seating.configure(eventId, ownerEmail, new SeatingLayoutRequest(SeatingLayoutRequest.Source.EXTERNAL,
                 SeatingLayoutRequest.Template.FRONT, null, 15, 20, 10, List.of(), List.of(), true));
