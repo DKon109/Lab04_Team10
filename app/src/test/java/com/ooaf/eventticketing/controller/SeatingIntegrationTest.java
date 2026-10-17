@@ -53,7 +53,7 @@ class SeatingIntegrationTest {
         var privateSeats = List.of(
                 new SeatMapRequest.SeatRequest("VIP-PRIVATE-1", "VIP 1", null, "VIP", "T1", 1, 1,
                         50, 50, false, false, false, List.of("VIP")));
-        return new SeatMapRequest("Main auditorium", attendeesChooseSeats, true,
+        return new SeatMapRequest("Main auditorium", attendeesChooseSeats, true, true,
                 Map.of("Standard", 99, "VIP", 99),
                 List.of(
                         new SeatMapRequest.ElementRequest("row-a", SeatingElementType.ROW, "Row A", null,
@@ -203,7 +203,7 @@ class SeatingIntegrationTest {
                 0, 0, false, false, false, List.of("UNKNOWN"));
         var duplicate = new SeatMapRequest.SeatRequest("a1", "A1 duplicate", null, "Stalls", "A", 0, 2,
                 10, 0, false, false, false, List.of("STANDARD"));
-        var request = new SeatMapRequest("Invalid map", true, false, Map.of("STANDARD", 2),
+        var request = new SeatMapRequest("Invalid map", true, false, true, Map.of("STANDARD", 2),
                 List.of(new SeatMapRequest.ElementRequest("row-a", SeatingElementType.ROW, "Row A", null,
                         0, 0, 0, 0, false, List.of(first, duplicate))));
 
@@ -251,6 +251,55 @@ class SeatingIntegrationTest {
         mvc.perform(get("/api/bookings/{id}/ticket", booking.id())
                         .header("Authorization", "Bearer " + tokens.issueToken(friend).token()))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test void unconfirmedManagedMapRemainsGeneralAdmissionAndRejectsSeatAssignments() {
+        var template = managedMap(true);
+        var unconfirmed = new SeatMapRequest(template.name(), template.attendeesChooseSeats(),
+                template.autoMatchTicketCapacities(), false, template.ticketTypeCapacities(), template.elements());
+        managedSeating.saveMap(eventId, ownerEmail, unconfirmed);
+        assertFalse(events.findById(eventId).orElseThrow().isSeatIdentifiersConfirmed());
+        publish();
+        var booking = book(studentEmail, false, null, false);
+        assertEquals(409, assertThrows(ResponseStatusException.class, () -> managedSeating.chooseSeat(
+                booking.id(), studentEmail, new SeatAssignmentRequest("A2"))).getStatusCode().value());
+        assertEquals(409, assertThrows(ResponseStatusException.class, () -> managedSeating.assignByOrganiser(
+                eventId, booking.id(), ownerEmail, new SeatAssignmentRequest("A2"))).getStatusCode().value());
+        assertNull(bookings.findById(booking.id()).orElseThrow().getSeatCode());
+        close(); seating.allocate(eventId, ownerEmail);
+        assertTrue(seating.ticket(booking.id(), studentEmail).generalAdmission());
+        assertNull(seating.ticket(booking.id(), studentEmail).seatCode());
+        assertTrue(seating.export(eventId, ownerEmail).contains("GENERAL_ADMISSION"));
+    }
+
+    @Test void mapReplacementRequiresExplicitPhysicalIdentifierConfirmation() {
+        managedSeating.saveMap(eventId, ownerEmail, managedMap(false));
+        assertTrue(events.findById(eventId).orElseThrow().isSeatIdentifiersConfirmed());
+        var template = managedMap(false);
+        managedSeating.saveMap(eventId, ownerEmail, new SeatMapRequest(template.name(), false, true,
+                false, template.ticketTypeCapacities(), template.elements()));
+        assertFalse(events.findById(eventId).orElseThrow().isSeatIdentifiersConfirmed());
+        managedSeating.saveMap(eventId, ownerEmail, template);
+        assertTrue(events.findById(eventId).orElseThrow().isSeatIdentifiersConfirmed());
+    }
+
+    @Test void omittedPhysicalIdentifierConfirmationDefaultsToGeneralAdmission() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
+                        "/api/organiser/events/{id}/seat-map", eventId)
+                .header("Authorization", "Bearer " + tokens.issueToken(owner).token())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"Unnumbered room","attendeesChooseSeats":false,
+                     "autoMatchTicketCapacities":false,"ticketTypeCapacities":{},
+                     "elements":[{"key":"row-a","type":"ROW","label":"Row A",
+                       "positionX":0,"positionY":0,"rotationDegrees":0,"displayOrder":0,"privateElement":false,
+                       "seats":[{"code":"A1","label":"A1","section":"Main","rowLabel":"A",
+                         "rowIndex":0,"seatNumber":1,"positionX":0,"positionY":0,
+                         "accessible":false,"blocked":false,"privateSeat":false,"ticketTypes":[]}]}]}
+                    """))
+                .andExpect(status().isOk());
+        assertFalse(events.findById(eventId).orElseThrow().isSeatIdentifiersConfirmed());
     }
 
     @Test void persistsThreeHundredUniqueSeatsWithinTenSeconds() {

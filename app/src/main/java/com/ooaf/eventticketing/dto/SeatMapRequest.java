@@ -11,6 +11,7 @@ public record SeatMapRequest(
         @NotBlank @Size(max = 100) String name,
         boolean attendeesChooseSeats,
         boolean autoMatchTicketCapacities,
+        Boolean identifiersConfirmed,
         @NotNull @Size(max = 30) Map<
                 @Pattern(regexp = "[A-Za-z0-9][A-Za-z0-9 _-]{0,39}") String,
                 @Min(0) @Max(10000) Integer> ticketTypeCapacities,

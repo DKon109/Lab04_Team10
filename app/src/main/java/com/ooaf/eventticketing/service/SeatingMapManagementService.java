@@ -135,7 +135,7 @@ public class SeatingMapManagementService {
 
         event.setCapacity(Math.toIntExact(savedSeats.stream()
                 .filter(seat -> !seat.isBlocked() && !seat.isPrivateSeat()).count()));
-        event.setSeatIdentifiersConfirmed(true);
+        event.setSeatIdentifiersConfirmed(Boolean.TRUE.equals(request.identifiersConfirmed()));
         return view(eventId, true);
     }
 
@@ -190,6 +190,9 @@ public class SeatingMapManagementService {
 
     private void assign(Booking booking, String requestedCode, boolean organiser) {
         if (booking.getStatus() == BookingStatus.CANCELLED) throw conflict("Cancelled bookings cannot receive a seat");
+        if (!booking.getEvent().isSeatIdentifiersConfirmed()) {
+            throw conflict("Confirm physical seat identifiers before assigning seats");
+        }
         if (requestedCode == null || requestedCode.isBlank()) {
             if (allocationRuns.existsById(booking.getEvent().getId())) {
                 throw conflict("Seats cannot be removed after allocation; assign a replacement seat instead");
