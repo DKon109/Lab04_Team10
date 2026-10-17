@@ -191,6 +191,9 @@ public class SeatingMapManagementService {
     private void assign(Booking booking, String requestedCode, boolean organiser) {
         if (booking.getStatus() == BookingStatus.CANCELLED) throw conflict("Cancelled bookings cannot receive a seat");
         if (requestedCode == null || requestedCode.isBlank()) {
+            if (allocationRuns.existsById(booking.getEvent().getId())) {
+                throw conflict("Seats cannot be removed after allocation; assign a replacement seat instead");
+            }
             booking.unassignSeat();
             return;
         }

@@ -129,6 +129,36 @@ class SeatingIntegrationTest {
             assertEquals("CAMPUS_DEMO", result.layout().source());
         }
     }
+    @Test void allocatedSeatCannotBeRemovedAndRetryPreservesTicketAndExport() {
+        managedSeating.saveMap(eventId, ownerEmail, managedMap(false));
+        publish();
+        var booking = book(studentEmail, false, null, false);
+        close();
+        var run = seating.allocate(eventId, ownerEmail);
+        String originalSeat = seating.ticket(booking.id(), studentEmail).seatCode();
+        assertNotNull(originalSeat);
+
+        for (String removal : Arrays.asList(null, " ")) {
+            assertEquals(409, assertThrows(ResponseStatusException.class,
+                    () -> managedSeating.assignByOrganiser(eventId, booking.id(), ownerEmail,
+                            new SeatAssignmentRequest(removal))).getStatusCode().value());
+        }
+        assertEquals(run.getCompletedAt(), seating.allocate(eventId, ownerEmail).getCompletedAt());
+        var ticket = seating.ticket(booking.id(), studentEmail);
+        assertEquals(BookingStatus.ALLOCATED, ticket.booking().status());
+        assertEquals(originalSeat, ticket.seatCode());
+        assertFalse(ticket.generalAdmission());
+        String csv = seating.export(eventId, ownerEmail);
+        assertTrue(csv.contains("\"" + originalSeat + "\""));
+        assertFalse(csv.contains("GENERAL_ADMISSION"));
+
+        // Moving to a replacement remains supported after allocation.
+        managedSeating.assignByOrganiser(eventId, booking.id(), ownerEmail,
+                new SeatAssignmentRequest("VIP-PRIVATE-1"));
+        assertEquals("VIP-PRIVATE-1", seating.ticket(booking.id(), studentEmail).seatCode());
+        assertTrue(seating.export(eventId, ownerEmail).contains("VIP-PRIVATE-1"));
+    }
+
     @Test void managedMapPersistsElementsMappingsPrivateSeatsAndAutoMatchedCapacity() {
         var view = managedSeating.saveMap(eventId, ownerEmail, managedMap(true));
 
