@@ -161,6 +161,7 @@ public class SeatingMapManagementService {
         }
         assign(booking, request.seatCode(), true);
         bookings.saveAndFlush(booking);
+        allocationRuns.findById(eventId).ifPresent(run -> run.updateSplitGroupCount(refreshGroupSplits(eventId)));
         return assignmentView(booking);
     }
 
@@ -186,6 +187,48 @@ public class SeatingMapManagementService {
         assign(booking, request.seatCode(), false);
         bookings.saveAndFlush(booking);
         return assignmentView(booking);
+    }
+
+    // Re-evaluate complete groups, including seats chosen before batch allocation.
+    int refreshGroupSplits(Long eventId) {
+        Set<Long> confirmedIds = attempts.findByEventIdAndOutcome(eventId, MockCheckoutRequest.Outcome.SUCCESS)
+                .stream().map(CheckoutAttempt::getBookingId).filter(Objects::nonNull).collect(Collectors.toSet());
+        List<Booking> confirmed = bookings.findByEventIdOrderByCreatedAtAsc(eventId).stream()
+                .filter(booking -> booking.getStatus() != BookingStatus.CANCELLED && confirmedIds.contains(booking.getId()))
+                .toList();
+        Map<String, VenueSeat> byCode = seats.findByEventIdOrderByElementIdAscRowIndexAscSeatNumberAsc(eventId)
+                .stream().collect(Collectors.toMap(VenueSeat::getCode, Function.identity()));
+        for (Booking booking : confirmed) {
+            VenueSeat seat = byCode.get(booking.getSeatCode());
+            if (seat == null || seat.isBlocked() || (booking.isAccessibilityRequired() && !seat.isAccessible())) {
+                throw conflict("Existing seat assignment does not satisfy seating constraints");
+            }
+        }
+        Map<String, List<Booking>> groups = confirmed.stream().filter(booking -> booking.getGroupCode() != null)
+                .collect(Collectors.groupingBy(Booking::getGroupCode));
+        int splitCount = 0;
+        for (List<Booking> group : groups.values()) {
+            List<VenueSeat> groupSeats = group.stream().map(booking -> byCode.get(booking.getSeatCode()))
+                    .sorted(Comparator.comparingInt(VenueSeat::getSeatNumber)).toList();
+            VenueSeat first = groupSeats.get(0);
+            boolean contiguous = true;
+            for (int i = 1; i < groupSeats.size(); i++) {
+                VenueSeat seat = groupSeats.get(i);
+                if (!seat.getElementId().equals(first.getElementId())
+                        || !seat.getSectionName().equalsIgnoreCase(first.getSectionName())
+                        || seat.getRowIndex() != first.getRowIndex()
+                        || !seat.getRowLabel().equalsIgnoreCase(first.getRowLabel())
+                        || seat.getSeatNumber() != groupSeats.get(i - 1).getSeatNumber() + 1) {
+                    contiguous = false;
+                    break;
+                }
+            }
+            String reason = contiguous ? null : "Group seats are not contiguous after preserving existing assignments";
+            if (!contiguous) splitCount++;
+            for (Booking booking : group) booking.assignSeat(booking.getSeatCode(), reason);
+        }
+        bookings.saveAllAndFlush(confirmed);
+        return splitCount;
     }
 
     private void assign(Booking booking, String requestedCode, boolean organiser) {

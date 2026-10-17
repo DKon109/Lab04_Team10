@@ -316,6 +316,58 @@ class SeatingIntegrationTest {
         assertEquals("A1", seating.ticket(booking.id(), studentEmail).seatCode());
     }
 
+    @Test void fullyPreassignedSplitGroupHasWarningsAndMetricsThatFollowOrganiserMoves() {
+        managedSeating.saveMap(eventId, ownerEmail, managedMap(false)); publish();
+        var first = book(studentEmail, true, null, true);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        managedSeating.assignByOrganiser(eventId, first.id(), ownerEmail, new SeatAssignmentRequest("A1"));
+        managedSeating.assignByOrganiser(eventId, second.id(), ownerEmail, new SeatAssignmentRequest("VIP-PRIVATE-1"));
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(1, run.getSplitGroupCount());
+        assertNotNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNotNull(seating.ticket(second.id(), friendEmail).splitReason());
+        assertTrue(seating.export(eventId, ownerEmail).contains("Group seats are not contiguous"));
+        assertEquals(run.getCompletedAt(), seating.allocate(eventId, ownerEmail).getCompletedAt());
+        assertEquals(1, seating.allocate(eventId, ownerEmail).getSplitGroupCount());
+
+        managedSeating.assignByOrganiser(eventId, second.id(), ownerEmail, new SeatAssignmentRequest("A2"));
+        assertEquals(0, runs.findById(eventId).orElseThrow().getSplitGroupCount());
+        assertNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNull(seating.ticket(second.id(), friendEmail).splitReason());
+        assertFalse(seating.export(eventId, ownerEmail).contains("Group seats are not contiguous"));
+        managedSeating.assignByOrganiser(eventId, second.id(), ownerEmail, new SeatAssignmentRequest("VIP-PRIVATE-1"));
+        assertEquals(1, runs.findById(eventId).orElseThrow().getSplitGroupCount());
+        assertNotNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNotNull(seating.ticket(second.id(), friendEmail).splitReason());
+        assertEquals(run.getCompletedAt(), seating.allocate(eventId, ownerEmail).getCompletedAt());
+    }
+
+    @Test void partiallyPreassignedSplitGroupIncludesEveryMemberInSplitReporting() {
+        managedSeating.saveMap(eventId, ownerEmail, managedMap(false)); publish();
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), true);
+        managedSeating.assignByOrganiser(eventId, first.id(), ownerEmail, new SeatAssignmentRequest("VIP-PRIVATE-1"));
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(1, run.getSplitGroupCount());
+        assertEquals("VIP-PRIVATE-1", seating.ticket(first.id(), studentEmail).seatCode());
+        assertEquals("A1", seating.ticket(second.id(), friendEmail).seatCode());
+        assertNotNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNotNull(seating.ticket(second.id(), friendEmail).splitReason());
+    }
+
+    @Test void partiallyPreassignedContiguousGroupDoesNotGetFalseSplitWarnings() {
+        managedSeating.saveMap(eventId, ownerEmail, managedMap(true)); publish();
+        var first = book(studentEmail, true, null, true);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        managedSeating.chooseSeat(first.id(), studentEmail, new SeatAssignmentRequest("A1"));
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(0, run.getSplitGroupCount());
+        assertEquals("A1", seating.ticket(first.id(), studentEmail).seatCode());
+        assertEquals("A2", seating.ticket(second.id(), friendEmail).seatCode());
+        assertNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNull(seating.ticket(second.id(), friendEmail).splitReason());
+    }
+
     @Test void persistsThreeHundredUniqueSeatsWithinTenSeconds() {
         seating.configure(eventId, ownerEmail, new SeatingLayoutRequest(SeatingLayoutRequest.Source.EXTERNAL,
                 SeatingLayoutRequest.Template.FRONT, null, 15, 20, 10, List.of(), List.of(), true));

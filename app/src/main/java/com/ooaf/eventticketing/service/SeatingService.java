@@ -145,6 +145,9 @@ public class SeatingService {
             confirmed.forEach(b -> b.assignSeat(null, null));
         }
         bookings.saveAllAndFlush(confirmed);
+        if (event.isSeatIdentifiersConfirmed() && managedMaps.existsById(eventId)) {
+            splitCount = mapManagement.refreshGroupSplits(eventId);
+        }
         return runs.saveAndFlush(new AllocationRun(eventId, version, confirmed.size(), splitCount, (System.nanoTime() - started) / 1_000_000));
     }
 
