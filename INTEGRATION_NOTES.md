@@ -34,8 +34,8 @@ real `likedByMe`/`likeCount`.
   panel is still a placeholder.
 - Organiser self-service accounts are not implemented. Registration
   creates STUDENT users; organiser access uses configured committee accounts.
-- Owner-only draft editing is implemented in the backend. Connecting
-  the organiser screens to the event management APIs remains frontend work.
+- Organiser screens are connected to draft creation/editing and event publication/closure APIs.
+  End-to-end verification with verified physical venue layouts and the incoming seating implementation remains pending.
 - Event deletion is not implemented.
 
 ## Blockers for the backend team
@@ -84,7 +84,9 @@ component changes are required in either direction.
 
 ## Sprint 2: Event management APIs (SCRUM-46 and SCRUM-47)
 
-These backend APIs are implemented. Frontend integration is pending.
+These backend APIs are implemented and connected to the organiser frontend.
+See the [backend handoff notes](docs/BACKEND_HANDOFF.md)
+for responsibilities and pending integration coordination.
 
 All management endpoints require a bearer token and the
 COMMITTEE_MEMBER role.
@@ -117,6 +119,8 @@ The permitted transitions are:
 - `published` to `closed`
 
 Publishing requires a future event date.
+If seatIdentifiersConfirmed is true, a saved seating layout is also
+required before publication. Otherwise, the API returns HTTP 409.
 Editing is permitted only while the event is a draft.
 Invalid transitions and editing a non-draft event return HTTP 409.
 
@@ -138,8 +142,8 @@ New bookings require a published event and open registration.
 An idempotent retry may return an existing booking.
 
 Event status and registrationStatus are separate fields.
-Changing event status to closed does not update registrationStatus,
-but new bookings are rejected because the event is no longer published.
+Closing a published event through the event status API also sets
+registrationStatus to CLOSED, preventing new bookings.
 
 ### Frontend handoff
 
@@ -147,3 +151,11 @@ Aadi owns the organiser screen integration.
 Event creation saves a draft; it does not publish the event.
 Use the organiser endpoint to retrieve drafts and the status endpoint
 to publish or close them.
+
+### Seating integration
+
+Use [the seating API specification](docs/SEATING_API.md) for layout
+configuration, allocation, tickets, and exports.
+
+The supported external templates are FRONT, FAN, and CENTRAL.
+Campus profiles are demonstration data and still require physical verification.
