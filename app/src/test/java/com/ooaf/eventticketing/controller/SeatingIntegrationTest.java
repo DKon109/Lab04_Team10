@@ -12,11 +12,14 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.MediaType;
 import java.time.LocalDateTime;
 import java.util.*;
+import jakarta.persistence.EntityManager;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test") @Transactional
 class SeatingIntegrationTest {
@@ -31,6 +34,7 @@ class SeatingIntegrationTest {
     @Autowired CheckoutAttemptRepository attempts;
     @Autowired TokenService tokens;
     @Autowired MockMvc mvc;
+    @Autowired EntityManager entityManager;
     Long eventId; String ownerEmail, studentEmail, friendEmail; User student, friend;
     @BeforeEach void seed() {
         String suffix = UUID.randomUUID().toString();
@@ -77,6 +81,17 @@ class SeatingIntegrationTest {
         assertNull(seating.ticket(first.id(), studentEmail).seatCode());
         close(); var run = seating.allocate(eventId, ownerEmail);
         assertEquals(2, run.getBookingCount()); assertEquals(0, run.getSplitGroupCount());
+
+        // Flush pending writes and reload data without the persistence context cache.
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = seating.management(eventId, ownerEmail);
+        assertEquals(config.layout(), reloaded.layout());
+        assertEquals("closed", reloaded.event().getStatus());
+        assertEquals(EventRegistrationStatus.CLOSED, reloaded.event().getRegistrationStatus());
+        assertEquals(2, reloaded.allocation().getBookingCount());
+
         var ticket = seating.ticket(first.id(), studentEmail);
         assertNotNull(ticket.layout()); assertNull(ticket.managedMap());
         assertEquals("A1", ticket.seatCode()); assertEquals("A2", seating.ticket(second.id(), friendEmail).seatCode());
@@ -386,5 +401,59 @@ class SeatingIntegrationTest {
         assertEquals(300, run.getBookingCount());
         assertEquals(300, bookings.findByEventIdOrderByCreatedAtAsc(eventId).stream().map(Booking::getSeatCode).filter(Objects::nonNull).distinct().count());
         assertTrue(elapsed < 10_000, "Persisted allocation must finish within 10 seconds on this test machine");
+    }
+
+    @Test
+    void layoutApiRejectsZeroRowsWithoutSaving() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String token = tokens.issueToken(owner).token();
+
+        mvc.perform(put("/api/organiser/events/{id}/seating", eventId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                        "source": "EXTERNAL",
+                        "template": "FRONT",
+                        "rows": 0,
+                        "seatsPerRow": 4,
+                        "aisleAfter": 0,
+                        "blockedCodes": [],
+                        "identifiersConfirmed": true
+                        }
+                        """))
+                .andExpect(status().isBadRequest());
+
+        assertNull(seating.management(eventId, ownerEmail).layout());
+    }
+
+    @Test
+    void oversizedLayoutDoesNotReplaceSavedLayout() throws Exception {
+        var original = seating.configure(
+                eventId, ownerEmail, layout(true, List.of("A1")));
+
+        var oversized = new SeatingLayoutRequest(
+                SeatingLayoutRequest.Source.EXTERNAL,
+                SeatingLayoutRequest.Template.FRONT,
+                null,
+                16,
+                20,
+                0,
+                List.of(),
+                List.of(),
+                true
+        );
+
+        var exception = assertThrows(
+                ResponseStatusException.class,
+                () -> seating.configure(eventId, ownerEmail, oversized)
+        );
+
+        assertEquals(400, exception.getStatusCode().value());
+
+        var current = seating.management(eventId, ownerEmail);
+        assertEquals(original.layout(), current.layout());
+        assertEquals(original.event().getCapacity(),
+                current.event().getCapacity());
     }
 }
