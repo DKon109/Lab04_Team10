@@ -78,6 +78,7 @@ class SeatingIntegrationTest {
         close(); var run = seating.allocate(eventId, ownerEmail);
         assertEquals(2, run.getBookingCount()); assertEquals(0, run.getSplitGroupCount());
         var ticket = seating.ticket(first.id(), studentEmail);
+        assertNotNull(ticket.layout()); assertNull(ticket.managedMap());
         assertEquals("A1", ticket.seatCode()); assertEquals("A2", seating.ticket(second.id(), friendEmail).seatCode());
         assertEquals(BookingStatus.ALLOCATED, ticket.booking().status());
         assertEquals(run.getCompletedAt(), seating.allocate(eventId, ownerEmail).getCompletedAt());
@@ -223,6 +224,35 @@ class SeatingIntegrationTest {
         assertEquals(BookingStatus.PENDING_ALLOCATION,
                 bookings.findById(booking.id()).orElseThrow().getStatus());
     }
+    @Test void managedMapIsReturnedOnPrivateTicketWithoutOtherBookingDetails() throws Exception {
+        seating.configure(eventId, ownerEmail, layout(true, List.of()));
+        managedSeating.saveMap(eventId, ownerEmail, managedMap(true));
+        publish();
+        var booking = book(studentEmail, false, null, false);
+        var otherBooking = book(friendEmail, false, null, true);
+        managedSeating.chooseSeat(booking.id(), studentEmail, new SeatAssignmentRequest("A2"));
+        managedSeating.chooseSeat(otherBooking.id(), friendEmail, new SeatAssignmentRequest("A1"));
+        close();
+        seating.allocate(eventId, ownerEmail);
+
+        var ticket = seating.ticket(booking.id(), studentEmail);
+        assertNull(ticket.layout());
+        assertNotNull(ticket.managedMap());
+        assertEquals("A2", ticket.seatCode());
+        assertEquals(3, ticket.managedMap().elements().size());
+        assertTrue(ticket.managedMap().elements().stream().flatMap(element -> element.seats().stream())
+                .allMatch(seat -> seat.assignedBookingId() == null && seat.assignedBookingReference() == null));
+        mvc.perform(get("/api/bookings/{id}/ticket", booking.id())
+                        .header("Authorization", "Bearer " + tokens.issueToken(student).token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.managedMap.name").value("Main auditorium"))
+                .andExpect(jsonPath("$.managedMap.elements[0].seats[1].code").value("A2"))
+                .andExpect(jsonPath("$.seatCode").value("A2"));
+        mvc.perform(get("/api/bookings/{id}/ticket", booking.id())
+                        .header("Authorization", "Bearer " + tokens.issueToken(friend).token()))
+                .andExpect(status().isNotFound());
+    }
+
     @Test void persistsThreeHundredUniqueSeatsWithinTenSeconds() {
         seating.configure(eventId, ownerEmail, new SeatingLayoutRequest(SeatingLayoutRequest.Source.EXTERNAL,
                 SeatingLayoutRequest.Template.FRONT, null, 15, 20, 10, List.of(), List.of(), true));

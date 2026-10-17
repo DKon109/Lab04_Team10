@@ -19,7 +19,7 @@ public class SeatingService {
             int version, List<SeatView> seats) {}
     public record ManagementView(EventResponse event, LayoutView layout, AllocationRun allocation, long confirmedBookings, long unverifiedLegacyBookings) {}
     public record TicketView(BookingResponse booking, LocalDateTime eventDate, String venue, String paymentStatus,
-            String seatCode, String splitReason, boolean generalAdmission, LayoutView layout) {}
+            String seatCode, String splitReason, boolean generalAdmission, LayoutView layout, SeatingMapManagementService.SeatMapView managedMap) {}
     public record CampusProfile(String id, String name, String template, int rows, int seatsPerRow, String notice) {}
     public static final List<CampusProfile> CAMPUS_PROFILES = List.of(
             new CampusProfile("woolley-demo", "Woolley — demo subset", "FRONT", 6, 10, "Illustrative only; not a verified physical room map"),
@@ -34,12 +34,14 @@ public class SeatingService {
     private final VenueSeatRepository venueSeats;
     private final AllocationRunRepository runs;
     private final SeatAllocationService allocator;
+    private final SeatingMapManagementService mapManagement;
     public SeatingService(EventRepository events, UserRepository users, BookingRepository bookings, CheckoutAttemptRepository attempts,
             SeatingLayoutRepository layouts, ManagedSeatMapRepository managedMaps,
-            VenueSeatRepository venueSeats, AllocationRunRepository runs, SeatAllocationService allocator) {
+            VenueSeatRepository venueSeats, AllocationRunRepository runs, SeatAllocationService allocator,
+            SeatingMapManagementService mapManagement) {
         this.events = events; this.users = users; this.bookings = bookings; this.attempts = attempts;
         this.layouts = layouts; this.managedMaps = managedMaps; this.venueSeats = venueSeats;
-        this.runs = runs; this.allocator = allocator;
+        this.runs = runs; this.allocator = allocator; this.mapManagement = mapManagement;
     }
 
     @Transactional(readOnly = true)
@@ -155,7 +157,8 @@ public class SeatingService {
         boolean paid = confirmedIds(event.getId()).contains(booking.getId());
         return new TicketView(BookingResponse.fromEntity(booking), event.getDateTime(), event.getVenue(), paid ? "MOCK_SUCCESS" : "UNVERIFIED_LEGACY",
                 booking.getSeatCode(), booking.getSplitReason(), !event.isSeatIdentifiersConfirmed(),
-                layouts.findById(event.getId()).map(this::layoutView).orElse(null));
+                layouts.findById(event.getId()).map(this::layoutView).orElse(null),
+                managedMaps.existsById(event.getId()) ? mapManagement.attendeeMap(event.getId()) : null);
     }
 
     @Transactional(readOnly = true)
