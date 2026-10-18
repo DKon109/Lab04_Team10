@@ -163,8 +163,44 @@ public class SeatingService {
         if (event.isSeatIdentifiersConfirmed() && managedMaps.existsById(eventId)) {
             splitCount = mapManagement.refreshGroupSplits(eventId);
         }
-        return runs.saveAndFlush(new AllocationRun(eventId, version, confirmed.size(), splitCount,
-                (System.nanoTime() - started) / 1_000_000, selectedStrategy));
+        var run = new AllocationRun(eventId, version, confirmed.size(), splitCount, 0, selectedStrategy);
+        run.updateEvaluation(evaluation(event, confirmed));
+        // Flush both assignments and the run before measuring the persisted operation.
+        runs.saveAndFlush(run);
+        run.setElapsedMillis((System.nanoTime() - started) / 1_000_000);
+        return runs.saveAndFlush(run);
+    }
+
+    @Transactional(readOnly = true)
+    public AllocationEvaluation metrics(Long eventId, String email) {
+        Event event = ownedEvent(eventId, email, false);
+        if (!runs.existsById(eventId)) throw conflict("Run allocation before reading metrics");
+        return evaluation(event, confirmedBookings(eventId));
+    }
+
+    private AllocationEvaluation evaluation(Event event, List<Booking> confirmed) {
+        if (!event.isSeatIdentifiersConfirmed()) return AllocationEvaluation.generalAdmission();
+        List<AllocationSeat> inputSeats;
+        Map<String, Long> byCode = new HashMap<>();
+        if (managedMaps.existsById(event.getId())) {
+            var stored = venueSeats.findByEventIdOrderByElementIdAscRowIndexAscSeatNumberAsc(event.getId());
+            stored.forEach(seat -> byCode.put(seat.getCode(), seat.getId()));
+            inputSeats = stored.stream().map(seat -> new AllocationSeat(seat.getId(), seat.getSectionName(),
+                    seat.getRowLabel(), seat.getRowIndex(), seat.getSeatNumber(), seat.isAccessible(),
+                    seat.isBlocked() || seat.isPrivateSeat(), seat.getElementId())).toList();
+        } else {
+            var views = seatViews(layouts.findById(event.getId()).orElseThrow(() -> conflict("Layout not found")));
+            views.forEach(seat -> byCode.put(seat.code(), seat.id()));
+            inputSeats = views.stream().map(seat -> new AllocationSeat(seat.id(), seat.section(),
+                    String.valueOf((char) ('A' + seat.row())), seat.row(), seat.column(), seat.accessible(), seat.blocked())).toList();
+        }
+        var input = confirmed.stream().map(b -> new AllocationBooking(b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList();
+        var assigned = confirmed.stream().map(b -> {
+            Long seatId = byCode.get(b.getSeatCode());
+            if (seatId == null) throw conflict("Confirmed booking has no valid seat assignment");
+            return new SeatAssignment(b.getId(), seatId, b.getGroupCode(), b.getSplitReason() != null);
+        }).toList();
+        return AllocationEvaluation.evaluate(input, inputSeats, assigned);
     }
 
     @Transactional(readOnly = true)
