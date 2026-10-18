@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { TopNav } from '../components/layout/TopNav';
 import { fetchMyEvents, setEventStatus } from '../api/organiserApi';
 import { formatEventDate } from '../utils/format';
-import { AllocationMetrics } from '../components/AllocationMetrics'; // Added for P10
+import { AllocationMetrics } from '../components/AllocationMetrics';
 
 const STATUS_TABS = [
   { id: 'all', label: 'All' },
@@ -12,7 +12,6 @@ const STATUS_TABS = [
   { id: 'closed', label: 'Closed' },
 ];
 
-// Fallback data so the demo looks good even if the backend is down
 const MOCK_EVENTS = [
   { id: '1', title: 'Quad Night Market', status: 'published', dateTime: new Date().toISOString() },
   { id: '2', title: 'Careers in Consulting', status: 'draft', dateTime: new Date().toISOString() },
@@ -35,7 +34,11 @@ export function OrganiserDashboard() {
       .then((data) => {
         if (!cancelled) {
           if (!data || data.length === 0) {
-            setEvents(MOCK_EVENTS);
+            // Filter fallback if backend returns empty
+            const filteredMocks = statusFilter === 'all' 
+              ? MOCK_EVENTS 
+              : MOCK_EVENTS.filter((e) => e.status === statusFilter);
+            setEvents(filteredMocks);
           } else {
             setEvents(data);
           }
@@ -44,7 +47,11 @@ export function OrganiserDashboard() {
       .catch((err) => {
         if (!cancelled) {
           console.warn("Using mock events fallback", err);
-          setEvents(MOCK_EVENTS);
+          // Filter fallback if backend fails
+          const filteredMocks = statusFilter === 'all' 
+            ? MOCK_EVENTS 
+            : MOCK_EVENTS.filter((e) => e.status === statusFilter);
+          setEvents(filteredMocks); 
         }
       })
       .finally(() => {
@@ -184,7 +191,7 @@ export function OrganiserDashboard() {
           </div>
         )}
 
-        {/* P10: METRICS & EXPORT (Rendered below the table) */}
+        {/* P10: METRICS & EXPORT */}
         {!loading && events.length > 0 && (
           <AllocationMetrics eventId="demo-event-id" />
         )}
