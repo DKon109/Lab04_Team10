@@ -1,5 +1,6 @@
 package com.ooaf.eventticketing.service;
 
+import com.ooaf.eventticketing.allocation.*;
 import com.ooaf.eventticketing.dto.MockCheckoutRequest;
 import com.ooaf.eventticketing.dto.SeatAssignmentRequest;
 import com.ooaf.eventticketing.dto.SeatMapRequest;
@@ -228,6 +229,16 @@ public class SeatingMapManagementService {
             for (Booking booking : group) booking.assignSeat(booking.getSeatCode(), reason);
         }
         bookings.saveAllAndFlush(confirmed);
+        allocationRuns.findById(eventId).ifPresent(run -> {
+            var input = confirmed.stream().map(b -> new AllocationBooking(
+                    b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList();
+            var graph = byCode.values().stream().map(seat -> new AllocationSeat(
+                    seat.getId(), seat.getSectionName(), seat.getRowLabel(), seat.getRowIndex(), seat.getSeatNumber(),
+                    seat.isAccessible(), seat.isBlocked() || seat.isPrivateSeat(), seat.getElementId())).toList();
+            var assigned = confirmed.stream().map(b -> new SeatAssignment(
+                    b.getId(), byCode.get(b.getSeatCode()).getId(), b.getGroupCode(), b.getSplitReason() != null)).toList();
+            run.updateEvaluation(AllocationEvaluation.evaluate(input, graph, assigned));
+        });
         return splitCount;
     }
 

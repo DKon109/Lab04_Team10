@@ -77,6 +77,62 @@ class SeatingIntegrationTest {
     void publish() { eventService.changeEventStatus(eventId, "published", ownerEmail); }
     void close() { eventService.changeEventStatus(eventId, "closed", ownerEmail); }
 
+    @Test void metricsArePersistedPrivateAndUpdatedAfterAnOrganiserMove() throws Exception {
+        saveAllocationMap(List.of(
+                allocationRow("row-a", List.of(allocationSeat("A1", "A", 0, 1, false),
+                        allocationSeat("A2", "A", 0, 2, false))),
+                allocationRow("row-b", List.of(allocationSeat("B1", "B", 1, 1, false),
+                        allocationSeat("B2", "B", 1, 2, false)))));
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        assertEquals(409, assertThrows(ResponseStatusException.class,
+                () -> seating.metrics(eventId, ownerEmail)).getStatusCode().value());
+        close(); seating.allocate(eventId, ownerEmail);
+        entityManager.flush(); entityManager.clear();
+        var run = runs.findById(eventId).orElseThrow();
+        assertEquals(100.0, run.getPercentageGroupsTogether());
+        assertEquals(100.0, run.getAverageGroupContiguityPercentage());
+        assertEquals(0.0, run.getAverageSplitDistance());
+        assertEquals(0, run.getIsolatedSeatCount());
+        assertEquals(0, run.getDuplicateAllocationCount());
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        mvc.perform(get("/api/organiser/events/{id}/allocation/metrics", eventId)
+                .header("Authorization", "Bearer " + tokens.issueToken(owner).token()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.percentageGroupsTogether").value(100.0))
+                .andExpect(jsonPath("$.duplicateAllocationCount").value(0))
+                .andExpect(jsonPath("$.averageGroupContiguityPercentage").value(100.0));
+        mvc.perform(get("/api/organiser/events/{id}/allocation/metrics", eventId))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/organiser/events/{id}/allocation/metrics", eventId)
+                .header("Authorization", "Bearer " + tokens.issueToken(users.findByEmail(studentEmail).orElseThrow()).token()))
+                .andExpect(status().isForbidden());
+        var outsider = users.saveAndFlush(new User("other-" + eventId + "@test.local", "unused", UserRole.COMMITTEE_MEMBER, "Other"));
+        mvc.perform(get("/api/organiser/events/{id}/allocation/metrics", eventId)
+                .header("Authorization", "Bearer " + tokens.issueToken(outsider).token()))
+                .andExpect(status().isForbidden());
+        managedSeating.assignByOrganiser(eventId, second.id(), ownerEmail, new SeatAssignmentRequest("B1"));
+        entityManager.flush(); entityManager.clear();
+        run = runs.findById(eventId).orElseThrow();
+        assertEquals(0.0, run.getPercentageGroupsTogether());
+        assertEquals(2.5, run.getAverageSplitDistance()); // weighted row + element boundary
+        assertEquals(0.0, run.getAverageGroupContiguityPercentage());
+        assertEquals(2, run.getIsolatedSeatCount());
+        assertEquals(1, run.getSplitGroupCount());
+        assertEquals(run.getPercentageGroupsTogether(), seating.metrics(eventId, ownerEmail).percentageGroupsTogether());
+        assertNotNull(seating.ticket(first.id(), studentEmail).splitReason());
+    }
+
+    @Test void generalAdmissionMetricsDoNotClaimContiguousSeating() {
+        seating.configure(eventId, ownerEmail, layout(false, List.of())); publish();
+        book(studentEmail, false, null, false); close();
+        var run = seating.allocate(eventId, ownerEmail);
+        assertNull(run.getPercentageGroupsTogether());
+        assertNull(run.getAverageGroupContiguityPercentage());
+        assertNull(run.getIsolatedSeatCount());
+        assertNull(seating.metrics(eventId, ownerEmail).averageSplitDistance());
+        assertEquals(0, run.getDuplicateAllocationCount());
+    }
+
     @ParameterizedTest
     @CsvSource({"DEFAULT,B1", "PREFER_SAME_ROW,A6", "OMITTED,B1"})
     void allocationStrategyControlsPlacementAndCannotChangeAfterCompletion(String requested, String expected) throws Exception {
@@ -108,6 +164,37 @@ class SeatingIntegrationTest {
         entityManager.flush(); entityManager.clear();
         assertEquals(expected, seating.ticket(second.id(), friendEmail).seatCode());
         assertEquals(run.getCompletedAt(), runs.findById(eventId).orElseThrow().getCompletedAt());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"DEFAULT,6,80", "PREFER_SAME_ROW,6,80", "DEFAULT,5,75", "PREFER_SAME_ROW,5,75"})
+    void persistsBalancedRowSubgroupsAndContiguity(AllocationStrategy strategy, int count, double contiguity) {
+        var rows = new ArrayList<SeatMapRequest.ElementRequest>();
+        for (int row = 0; row < 2; row++) {
+            String label = String.valueOf((char) ('A' + row));
+            var seats = new ArrayList<SeatMapRequest.SeatRequest>();
+            for (int number = 1; number <= 4; number++) seats.add(allocationSeat(label + number, label, row, number, false));
+            rows.add(allocationRow("row-" + label, seats));
+        }
+        saveAllocationMap(rows);
+        String groupCode = null;
+        for (int i = 0; i < count; i++) {
+            var user = users.saveAndFlush(new User("balanced-" + eventId + "-" + i + "@test.local", "unused", UserRole.STUDENT));
+            var booking = book(user.getEmail(), i == 0, groupCode, false);
+            groupCode = booking.groupCode();
+        }
+        close(); seating.allocate(eventId, ownerEmail, strategy);
+        entityManager.flush(); entityManager.clear();
+        var stored = bookings.findByEventIdOrderByCreatedAtAsc(eventId);
+        var sizes = stored.stream().collect(java.util.stream.Collectors.groupingBy(
+                b -> b.getSeatCode().substring(0, 1), java.util.stream.Collectors.counting())).values().stream().sorted().toList();
+        assertEquals(count == 6 ? List.of(3L, 3L) : List.of(2L, 3L), sizes);
+        var run = runs.findById(eventId).orElseThrow();
+        assertEquals(strategy, run.getStrategy());
+        assertEquals(1, run.getSplitGroupCount());
+        assertEquals(contiguity, run.getAverageGroupContiguityPercentage());
+        assertEquals(contiguity, seating.metrics(eventId, ownerEmail).averageGroupContiguityPercentage());
+        assertEquals(count, stored.stream().map(Booking::getSeatCode).distinct().count());
     }
 
     @Test void invalidStrategyCannotCreateAnAllocation() throws Exception {
