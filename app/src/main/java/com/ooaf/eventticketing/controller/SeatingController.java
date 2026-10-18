@@ -1,4 +1,5 @@
 package com.ooaf.eventticketing.controller;
+import com.ooaf.eventticketing.allocation.AllocationStrategy;
 import com.ooaf.eventticketing.dto.SeatingLayoutRequest;
 import com.ooaf.eventticketing.entity.AllocationRun;
 import com.ooaf.eventticketing.service.SeatingService;
@@ -19,7 +20,10 @@ public class SeatingController {
     @PutMapping("/api/organiser/events/{id}/seating")
     public SeatingService.ManagementView configure(@PathVariable Long id, @Valid @RequestBody SeatingLayoutRequest request, Authentication auth) { return service.configure(id, auth.getName(), request); }
     @PostMapping("/api/organiser/events/{id}/allocate")
-    public AllocationRun allocate(@PathVariable Long id, Authentication auth) { return service.allocate(id, auth.getName()); }
+    public AllocationRun allocate(@PathVariable Long id,
+            @RequestParam(required = false) AllocationStrategy strategy, Authentication auth) {
+        return service.allocate(id, auth.getName(), strategy);
+    }
     @GetMapping("/api/bookings/{id}/ticket")
     public SeatingService.TicketView ticket(@PathVariable Long id, Authentication auth) { return service.ticket(id, auth.getName()); }
     @GetMapping("/api/organiser/events/{id}/allocation/export")

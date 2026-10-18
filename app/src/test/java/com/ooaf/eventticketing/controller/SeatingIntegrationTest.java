@@ -5,6 +5,9 @@ import com.ooaf.eventticketing.entity.*;
 import com.ooaf.eventticketing.repository.*;
 import com.ooaf.eventticketing.service.*;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import com.ooaf.eventticketing.allocation.AllocationStrategy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -20,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test") @Transactional
 class SeatingIntegrationTest {
@@ -72,6 +76,49 @@ class SeatingIntegrationTest {
     }
     void publish() { eventService.changeEventStatus(eventId, "published", ownerEmail); }
     void close() { eventService.changeEventStatus(eventId, "closed", ownerEmail); }
+
+    @ParameterizedTest
+    @CsvSource({"DEFAULT,B1", "PREFER_SAME_ROW,A6", "OMITTED,B1"})
+    void allocationStrategyControlsPlacementAndCannotChangeAfterCompletion(String requested, String expected) throws Exception {
+        saveAllocationMap(List.of(
+                allocationRow("row-a", List.of(allocationSeat("A1", "A", 0, 1, false),
+                        allocationSeat("A6", "A", 0, 6, false))),
+                allocationRow("row-b", List.of(allocationSeat("B1", "B", 1, 1, false)))));
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        managedSeating.chooseSeat(first.id(), studentEmail, new SeatAssignmentRequest("A1"));
+        close();
+        String token = tokens.issueToken(users.findByEmail(ownerEmail).orElseThrow()).token();
+        var request = post("/api/organiser/events/{id}/allocate", eventId).header("Authorization", "Bearer " + token);
+        String selected = requested.equals("OMITTED") ? "DEFAULT" : requested;
+        if (!requested.equals("OMITTED")) request.param("strategy", requested);
+        mvc.perform(request).andExpect(status().isOk()).andExpect(jsonPath("$.strategy").value(selected));
+        entityManager.flush(); entityManager.clear();
+        var run = runs.findById(eventId).orElseThrow();
+        assertEquals(AllocationStrategy.valueOf(selected), run.getStrategy());
+        assertEquals("A1", seating.ticket(first.id(), studentEmail).seatCode());
+        assertEquals(expected, seating.ticket(second.id(), friendEmail).seatCode());
+        assertEquals(run.getCompletedAt(), seating.allocate(eventId, ownerEmail).getCompletedAt());
+        mvc.perform(post("/api/organiser/events/{id}/allocate", eventId).param("strategy", selected)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.strategy").value(selected));
+        mvc.perform(post("/api/organiser/events/{id}/allocate", eventId)
+                .param("strategy", selected.equals("DEFAULT") ? "PREFER_SAME_ROW" : "DEFAULT")
+                .header("Authorization", "Bearer " + token)).andExpect(status().isConflict());
+        entityManager.flush(); entityManager.clear();
+        assertEquals(expected, seating.ticket(second.id(), friendEmail).seatCode());
+        assertEquals(run.getCompletedAt(), runs.findById(eventId).orElseThrow().getCompletedAt());
+    }
+
+    @Test void invalidStrategyCannotCreateAnAllocation() throws Exception {
+        seating.configure(eventId, ownerEmail, layout(true, List.of())); publish();
+        var booking = book(studentEmail, false, null, false); close();
+        mvc.perform(post("/api/organiser/events/{id}/allocate", eventId).param("strategy", "UNKNOWN")
+                .header("Authorization", "Bearer " + tokens.issueToken(users.findByEmail(ownerEmail).orElseThrow()).token()))
+                .andExpect(status().isBadRequest());
+        assertFalse(runs.existsById(eventId));
+        assertEquals(BookingStatus.PENDING_ALLOCATION, bookings.findById(booking.id()).orElseThrow().getStatus());
+    }
 
     @Test void fullLifecyclePersistsPrivateTicketsAndAnonymousExport() throws Exception {
         var config = seating.configure(eventId, ownerEmail, layout(true, List.of("A1")));
