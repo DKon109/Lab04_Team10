@@ -13,6 +13,10 @@ public class AllocationRun {
     private int splitGroupCount;
     private long elapsedMillis;
     private LocalDateTime completedAt;
+    public void updateSplitGroupCount(int splitGroupCount) {
+        this.splitGroupCount = splitGroupCount;
+    }
+
     public AllocationRun(Long eventId, int layoutVersion, int bookingCount, int splitGroupCount, long elapsedMillis) {
         this.eventId = eventId; this.layoutVersion = layoutVersion; this.bookingCount = bookingCount;
         this.splitGroupCount = splitGroupCount; this.elapsedMillis = elapsedMillis;

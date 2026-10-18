@@ -26,12 +26,17 @@ public class EventService {
     private final LikeService likeService;
     private final UserRepository userRepository;
     private final com.ooaf.eventticketing.repository.SeatingLayoutRepository layouts;
+    private final com.ooaf.eventticketing.repository.ManagedSeatMapRepository managedSeatMaps;
 
-    public EventService(EventRepository eventRepository, LikeService likeService, UserRepository userRepository, com.ooaf.eventticketing.repository.SeatingLayoutRepository layouts) {
+    public EventService(EventRepository eventRepository, LikeService likeService,
+            UserRepository userRepository,
+            com.ooaf.eventticketing.repository.SeatingLayoutRepository layouts,
+            com.ooaf.eventticketing.repository.ManagedSeatMapRepository managedSeatMaps) {
         this.eventRepository = eventRepository;
         this.likeService = likeService;
         this.userRepository = userRepository;
         this.layouts = layouts;
+        this.managedSeatMaps = managedSeatMaps;
     }
 
     public List<EventResponse> listEvents(String scope, OrganiserType organiserType, String category,
@@ -126,7 +131,7 @@ public class EventService {
         event.setOrganiserName(organiserName);
         event.setOrganiserType(request.organiserType());
         event.setCategory(request.category().trim());
-        if (!layouts.existsById(eventId)) {
+        if (!layouts.existsById(eventId) && !managedSeatMaps.existsById(eventId)) {
             if (request.capacity() != null) event.setCapacity(request.capacity());
             event.setSeatIdentifiersConfirmed(Boolean.TRUE.equals(request.seatIdentifiersConfirmed()));
         }
@@ -166,7 +171,8 @@ public class EventService {
                     "Event date must be in the future before publishing");
         }
 
-        if (canPublish && event.isSeatIdentifiersConfirmed() && !layouts.existsById(eventId)) {
+        if (canPublish && event.isSeatIdentifiersConfirmed()
+                && !layouts.existsById(eventId) && !managedSeatMaps.existsById(eventId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Save the seating layout before publishing an assigned-seating event");
         }
         if (canClose) event.setRegistrationStatus(com.ooaf.eventticketing.entity.EventRegistrationStatus.CLOSED);

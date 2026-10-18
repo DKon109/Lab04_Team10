@@ -19,7 +19,7 @@ public class SeatingService {
             int version, List<SeatView> seats) {}
     public record ManagementView(EventResponse event, LayoutView layout, AllocationRun allocation, long confirmedBookings, long unverifiedLegacyBookings) {}
     public record TicketView(BookingResponse booking, LocalDateTime eventDate, String venue, String paymentStatus,
-            String seatCode, String splitReason, boolean generalAdmission, LayoutView layout) {}
+            String seatCode, String splitReason, boolean generalAdmission, LayoutView layout, SeatingMapManagementService.SeatMapView managedMap) {}
     public record CampusProfile(String id, String name, String template, int rows, int seatsPerRow, String notice) {}
     public static final List<CampusProfile> CAMPUS_PROFILES = List.of(
             new CampusProfile("woolley-demo", "Woolley — demo subset", "FRONT", 6, 10, "Illustrative only; not a verified physical room map"),
@@ -30,12 +30,18 @@ public class SeatingService {
     private final BookingRepository bookings;
     private final CheckoutAttemptRepository attempts;
     private final SeatingLayoutRepository layouts;
+    private final ManagedSeatMapRepository managedMaps;
+    private final VenueSeatRepository venueSeats;
     private final AllocationRunRepository runs;
     private final SeatAllocationService allocator;
+    private final SeatingMapManagementService mapManagement;
     public SeatingService(EventRepository events, UserRepository users, BookingRepository bookings, CheckoutAttemptRepository attempts,
-            SeatingLayoutRepository layouts, AllocationRunRepository runs, SeatAllocationService allocator) {
+            SeatingLayoutRepository layouts, ManagedSeatMapRepository managedMaps,
+            VenueSeatRepository venueSeats, AllocationRunRepository runs, SeatAllocationService allocator,
+            SeatingMapManagementService mapManagement) {
         this.events = events; this.users = users; this.bookings = bookings; this.attempts = attempts;
-        this.layouts = layouts; this.runs = runs; this.allocator = allocator;
+        this.layouts = layouts; this.managedMaps = managedMaps; this.venueSeats = venueSeats;
+        this.runs = runs; this.allocator = allocator; this.mapManagement = mapManagement;
     }
 
     @Transactional(readOnly = true)
@@ -48,6 +54,8 @@ public class SeatingService {
     public ManagementView configure(Long eventId, String email, SeatingLayoutRequest request) {
         Event event = ownedEvent(eventId, email, true);
         if (event.getStatus() != EventStatus.DRAFT) throw conflict("Layout can only be changed while the event is a draft");
+        if (managedMaps.existsById(eventId))
+            throw conflict("Delete the managed seating map before using the legacy grid layout");
         if (bookings.countByEventIdAndStatusNot(eventId, BookingStatus.CANCELLED) > 0 || runs.existsById(eventId))
             throw conflict("Cannot change a layout after bookings or allocation exist");
         int rows = request.rows(), columns = request.seatsPerRow();
@@ -88,26 +96,58 @@ public class SeatingService {
         if (confirmed.isEmpty()) throw conflict("No mock-payment-confirmed bookings to allocate");
         int splitCount = 0, version = 0;
         if (event.isSeatIdentifiersConfirmed()) {
-            var layout = layouts.findById(eventId).orElseThrow(() -> conflict("Save a seating layout before allocation"));
-            version = layout.getLayoutVersion();
-            var views = seatViews(layout);
-            var seats = views.stream().map(s -> new AllocationSeat(s.id(), s.section(), String.valueOf((char)('A' + s.row())), s.row(), s.column(), s.accessible(), s.blocked())).toList();
-            try {
-                var result = allocator.allocate(confirmed.stream().map(b -> new AllocationBooking(b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList(), seats);
-                Map<Long, Booking> byId = confirmed.stream().collect(Collectors.toMap(Booking::getId, b -> b));
-                Map<Long, SeatView> seatsById = views.stream().collect(Collectors.toMap(SeatView::id, s -> s));
-                Map<String, String> reasons = result.splits().stream().collect(Collectors.toMap(GroupSplit::groupCode, GroupSplit::reason));
-                for (var assignment : result.assignments()) {
-                    var booking = byId.get(assignment.bookingId());
-                    booking.assignSeat(seatsById.get(assignment.seatId()).code(), assignment.split() ? reasons.get(assignment.groupCode()) : null);
+            if (managedMaps.existsById(eventId)) {
+                var map = managedMaps.findById(eventId).orElseThrow();
+                version = map.getMapVersion();
+                var storedSeats = venueSeats.findByEventIdOrderByElementIdAscRowIndexAscSeatNumberAsc(eventId);
+                Set<String> occupied = bookings.findByEventIdOrderByCreatedAtAsc(eventId).stream()
+                        .filter(booking -> booking.getStatus() != BookingStatus.CANCELLED && booking.getSeatCode() != null)
+                        .map(booking -> booking.getSeatCode().toUpperCase(Locale.ROOT))
+                        .collect(Collectors.toSet());
+                var pending = confirmed.stream().filter(booking -> booking.getSeatCode() == null).toList();
+                if (!pending.isEmpty()) {
+                    var allocationSeats = storedSeats.stream().map(seat -> new AllocationSeat(
+                            seat.getId(), seat.getSectionName(), seat.getRowLabel(), seat.getRowIndex(),
+                            seat.getSeatNumber(), seat.isAccessible(), seat.isBlocked() || seat.isPrivateSeat()
+                                    || occupied.contains(seat.getCode().toUpperCase(Locale.ROOT)))).toList();
+                    try {
+                        var result = allocator.allocate(pending.stream().map(booking -> new AllocationBooking(
+                                booking.getId(), booking.getGroupCode(), booking.isAccessibilityRequired())).toList(), allocationSeats);
+                        Map<Long, Booking> byId = pending.stream().collect(Collectors.toMap(Booking::getId, booking -> booking));
+                        Map<Long, VenueSeat> bySeatId = storedSeats.stream().collect(Collectors.toMap(VenueSeat::getId, seat -> seat));
+                        Map<String, String> reasons = result.splits().stream().collect(Collectors.toMap(GroupSplit::groupCode, GroupSplit::reason));
+                        for (var assignment : result.assignments()) {
+                            byId.get(assignment.bookingId()).assignSeat(bySeatId.get(assignment.seatId()).getCode(),
+                                    assignment.split() ? reasons.get(assignment.groupCode()) : null);
+                        }
+                        splitCount = result.splits().size();
+                    } catch (AllocationException e) { throw conflict(e.getMessage()); }
                 }
-                splitCount = result.splits().size();
-            } catch (AllocationException e) { throw conflict(e.getMessage()); }
+            } else {
+                var layout = layouts.findById(eventId).orElseThrow(() -> conflict("Save a seating layout before allocation"));
+                version = layout.getLayoutVersion();
+                var views = seatViews(layout);
+                var seats = views.stream().map(s -> new AllocationSeat(s.id(), s.section(), String.valueOf((char)('A' + s.row())), s.row(), s.column(), s.accessible(), s.blocked())).toList();
+                try {
+                    var result = allocator.allocate(confirmed.stream().map(b -> new AllocationBooking(b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList(), seats);
+                    Map<Long, Booking> byId = confirmed.stream().collect(Collectors.toMap(Booking::getId, b -> b));
+                    Map<Long, SeatView> seatsById = views.stream().collect(Collectors.toMap(SeatView::id, s -> s));
+                    Map<String, String> reasons = result.splits().stream().collect(Collectors.toMap(GroupSplit::groupCode, GroupSplit::reason));
+                    for (var assignment : result.assignments()) {
+                        var booking = byId.get(assignment.bookingId());
+                        booking.assignSeat(seatsById.get(assignment.seatId()).code(), assignment.split() ? reasons.get(assignment.groupCode()) : null);
+                    }
+                    splitCount = result.splits().size();
+                } catch (AllocationException e) { throw conflict(e.getMessage()); }
+            }
         } else {
             // General admission has a valid ticket but deliberately no seat label.
             confirmed.forEach(b -> b.assignSeat(null, null));
         }
         bookings.saveAllAndFlush(confirmed);
+        if (event.isSeatIdentifiersConfirmed() && managedMaps.existsById(eventId)) {
+            splitCount = mapManagement.refreshGroupSplits(eventId);
+        }
         return runs.saveAndFlush(new AllocationRun(eventId, version, confirmed.size(), splitCount, (System.nanoTime() - started) / 1_000_000));
     }
 
@@ -120,7 +160,8 @@ public class SeatingService {
         boolean paid = confirmedIds(event.getId()).contains(booking.getId());
         return new TicketView(BookingResponse.fromEntity(booking), event.getDateTime(), event.getVenue(), paid ? "MOCK_SUCCESS" : "UNVERIFIED_LEGACY",
                 booking.getSeatCode(), booking.getSplitReason(), !event.isSeatIdentifiersConfirmed(),
-                layouts.findById(event.getId()).map(this::layoutView).orElse(null));
+                layouts.findById(event.getId()).map(this::layoutView).orElse(null),
+                managedMaps.existsById(event.getId()) ? mapManagement.attendeeMap(event.getId()) : null);
     }
 
     @Transactional(readOnly = true)
