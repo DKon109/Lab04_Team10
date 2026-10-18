@@ -11,6 +11,7 @@ export default function EventSeatingPage() {
   const [data, setData] = useState(null), [profiles, setProfiles] = useState([]), [form, setForm] = useState(initialForm);
   const [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false), [confirmClose, setConfirmClose] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
+  const [strategy, setStrategy] = useState('DEFAULT');
   useEffect(() => {
     let active = true;
     Promise.all([fetchSeating(eventId), fetchSeatingProfiles()]).then(([next, options]) => {
@@ -55,8 +56,16 @@ export default function EventSeatingPage() {
           {draft && <><Link className="btn btn-ghost" to={`/organiser/events/${eventId}/edit`}>Edit event details</Link><button disabled={busy} className="btn btn-primary" onClick={() => action(() => setEventStatus(eventId, 'published'), 'Event published. Attendees can now book.')}>Publish saved event</button></>}
           {data.event.status === 'published' && !confirmClose && <button disabled={busy} className="btn btn-primary" onClick={() => setConfirmClose(true)}>Close registration…</button>}
           {confirmClose && <div role="alert"><p>Close registration for this event? This stops new bookings and cannot be undone in this demo.</p><button disabled={busy} className="btn btn-primary" onClick={() => action(() => setEventStatus(eventId, 'closed'), 'Registration closed. Ready for allocation.')}>Confirm close registration</button><button disabled={busy} className="btn btn-ghost" onClick={() => setConfirmClose(false)}>Keep open</button></div>}
-          {data.event.status === 'closed' && !data.allocation && <button disabled={busy || !data.confirmedBookings} className="btn btn-primary" onClick={() => action(() => allocateSeats(eventId), 'Allocation saved. Attendees can open their tickets now.')}>{busy ? 'Allocating…' : 'Run allocation'}</button>}
-          {data.allocation && <><p className="form-banner success">{data.allocation.bookingCount} tickets ready · {data.allocation.splitGroupCount} split groups · recorded processing {data.allocation.elapsedMillis} ms</p><p className="subtle">Allocation is final for this layout. Repeated requests return the same saved run.</p><button disabled={busy} className="btn btn-primary" onClick={download}>Download anonymous CSV</button></>}
+          {data.event.status === 'closed' && !data.allocation && <>
+            {data.event.seatIdentifiersConfirmed && <>
+              <label className="field">Allocation preference<select disabled={busy} value={strategy} onChange={e => setStrategy(e.target.value)}>
+                <option value="DEFAULT">Default</option><option value="PREFER_SAME_ROW">Prefer same row</option>
+              </select></label>
+              <p className="subtle">Both options first try to seat the complete group together. Default balances row subgroup sizes with a higher penalty for extra rows. Prefer same row keeps one row whenever feasible; otherwise it favours fewer rows with contiguous, evenly sized subgroups. Odd groups split as evenly as possible, and capacity, accessibility or fixed seats may limit balance.</p>
+            </>}
+            <button disabled={busy || !data.confirmedBookings} className="btn btn-primary" onClick={() => action(() => allocateSeats(eventId, data.event.seatIdentifiersConfirmed ? strategy : 'DEFAULT'), 'Allocation saved. Attendees can open their tickets now.')}>{busy ? 'Allocating…' : 'Run allocation'}</button>
+          </>}
+          {data.allocation && <><p>Allocation preference: {data.allocation.strategy === 'PREFER_SAME_ROW' ? 'Prefer same row' : data.allocation.strategy === 'DEFAULT' ? 'Default' : 'Not recorded'}</p><p className="form-banner success">{data.allocation.bookingCount} tickets ready · {data.allocation.splitGroupCount} split groups · recorded processing {data.allocation.elapsedMillis} ms</p><p className="subtle">Allocation is final for this layout. Repeated requests return the same saved run.</p><button disabled={busy} className="btn btn-primary" onClick={download}>Download anonymous CSV</button></>}
         </div>
       </section></div></>}
   </main></>;
