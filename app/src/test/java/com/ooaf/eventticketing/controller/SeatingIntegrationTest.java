@@ -15,6 +15,8 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.MediaType;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
+
 import jakarta.persistence.EntityManager;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -36,6 +38,7 @@ class SeatingIntegrationTest {
     @Autowired TokenService tokens;
     @Autowired MockMvc mvc;
     @Autowired EntityManager entityManager;
+    @Autowired CampusVenueTemplateService campusTemplates;
     Long eventId; String ownerEmail, studentEmail, friendEmail; User student, friend;
     @BeforeEach void seed() {
         String suffix = UUID.randomUUID().toString();
@@ -527,5 +530,65 @@ class SeatingIntegrationTest {
         assertEquals(EventStatus.PUBLISHED, unchanged.getStatus());
         assertEquals(originalCapacity, unchanged.getCapacity());
         assertTrue(unchanged.isSeatIdentifiersConfirmed());
+    }
+
+    @Test
+    void campusTemplatesAreAvailableOnlyToOrganisers() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+        String studentToken = tokens.issueToken(student).token();
+
+        mvc.perform(get("/api/organiser/venue-templates")
+                .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id")
+                        .value("usyd-seymour-everest"))
+                .andExpect(jsonPath("$[0].map.ticketTypeCapacities.STANDARD")
+                        .value(505))
+                .andExpect(jsonPath("$[0].map.identifiersConfirmed")
+                        .value(false));
+
+        mvc.perform(get("/api/organiser/venue-templates")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(get("/api/organiser/venue-templates"))
+                .andExpect(status().isUnauthorized());
+
+    }
+
+    @Test
+    void campusTemplateCanBeSavedAndReloadedWithoutConfirmingSeats() {
+        var template = campusTemplates.listTemplates().stream()
+                .filter(item -> "usyd-seymour-everest".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        managedSeating.saveMap(eventId, ownerEmail, template.map());
+
+        // Flush writes and reload from the database instead of the JPA cache.
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = managedSeating.organiserMap(eventId, ownerEmail);
+        assertEquals(template.name(), reloaded.name());
+        assertEquals(505L, reloaded.totalSeats());
+        assertEquals(505L, reloaded.publicCapacity());
+
+        Set<String> expectCodes = template.map().elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .map(SeatMapRequest.SeatRequest::code)
+                .collect(java.util.stream.Collectors.toSet());
+
+        Set<String> actualCodes = reloaded.elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .map(SeatingMapManagementService.SeatView::code)
+                .collect(java.util.stream.Collectors.toSet());
+
+        assertEquals(expectCodes, actualCodes);
+
+        var event = events.findById(eventId).orElseThrow();
+        assertEquals(Integer.valueOf(505), event.getCapacity());
+        assertFalse(event.isSeatIdentifiersConfirmed());
     }
 }
