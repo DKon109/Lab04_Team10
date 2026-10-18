@@ -383,6 +383,88 @@ class SeatingIntegrationTest {
         assertNull(seating.ticket(second.id(), friendEmail).splitReason());
     }
 
+    SeatMapRequest.SeatRequest allocationSeat(String code, String row, int rowIndex, int number, boolean accessible) {
+        return new SeatMapRequest.SeatRequest(code, code, null, "Main", row, rowIndex, number,
+                number * 10, rowIndex * 20, accessible, false, false, List.of("STANDARD"));
+    }
+
+    SeatMapRequest.ElementRequest allocationRow(String key, List<SeatMapRequest.SeatRequest> seats) {
+        return new SeatMapRequest.ElementRequest(key, SeatingElementType.ROW, key, null,
+                0, 0, 0, 0, false, seats);
+    }
+
+    void saveAllocationMap(List<SeatMapRequest.ElementRequest> elements) {
+        managedSeating.saveMap(eventId, ownerEmail, new SeatMapRequest("Allocation regression", true, true,
+                true, Map.of("STANDARD", 0), elements));
+        publish();
+    }
+
+    @Test void separateElementsDoNotBeatAnAvailableContiguousRow() {
+        saveAllocationMap(List.of(
+                allocationRow("left", List.of(allocationSeat("A1", "A", 0, 1, false))),
+                allocationRow("right", List.of(allocationSeat("A2", "A", 0, 2, false))),
+                allocationRow("row-b", List.of(allocationSeat("B1", "B", 1, 1, false),
+                        allocationSeat("B2", "B", 1, 2, false)))));
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(0, run.getSplitGroupCount());
+        assertEquals(Set.of("B1", "B2"), Set.of(seating.ticket(first.id(), studentEmail).seatCode(),
+                seating.ticket(second.id(), friendEmail).seatCode()));
+        assertNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNull(seating.ticket(second.id(), friendEmail).splitReason());
+    }
+
+    @Test void pendingMemberIsSeatedBesidePreassignedMemberAtEndOfRow() {
+        saveAllocationMap(List.of(allocationRow("row-a", List.of(
+                allocationSeat("A1", "A", 0, 1, false), allocationSeat("A2", "A", 0, 2, false),
+                allocationSeat("A3", "A", 0, 3, false), allocationSeat("A4", "A", 0, 4, false)))));
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        managedSeating.chooseSeat(first.id(), studentEmail, new SeatAssignmentRequest("A4"));
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(0, run.getSplitGroupCount());
+        entityManager.flush(); entityManager.clear();
+        assertEquals("A4", seating.ticket(first.id(), studentEmail).seatCode());
+        assertEquals("A3", seating.ticket(second.id(), friendEmail).seatCode());
+        assertNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNull(seating.ticket(second.id(), friendEmail).splitReason());
+        assertFalse(seating.export(eventId, ownerEmail).contains("Group seats are not contiguous"));
+    }
+
+    @Test void pendingMemberFillsGapBetweenMultiplePreassignedGroupMembers() {
+        saveAllocationMap(List.of(allocationRow("row-a", List.of(
+                allocationSeat("A1", "A", 0, 1, false), allocationSeat("A2", "A", 0, 2, false),
+                allocationSeat("A3", "A", 0, 3, false), allocationSeat("A4", "A", 0, 4, false)))));
+        var third = users.saveAndFlush(new User("third-" + eventId + "@test.local", "unused", UserRole.STUDENT));
+        var firstBooking = book(studentEmail, true, null, false);
+        var secondBooking = book(friendEmail, false, firstBooking.groupCode(), false);
+        var thirdBooking = book(third.getEmail(), false, firstBooking.groupCode(), false);
+        managedSeating.chooseSeat(firstBooking.id(), studentEmail, new SeatAssignmentRequest("A4"));
+        managedSeating.chooseSeat(secondBooking.id(), friendEmail, new SeatAssignmentRequest("A2"));
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(0, run.getSplitGroupCount());
+        assertEquals("A4", seating.ticket(firstBooking.id(), studentEmail).seatCode());
+        assertEquals("A2", seating.ticket(secondBooking.id(), friendEmail).seatCode());
+        assertEquals("A3", seating.ticket(thirdBooking.id(), third.getEmail()).seatCode());
+    }
+
+    @Test void completingPreassignedGroupReservesAccessibilityForOtherBookings() {
+        saveAllocationMap(List.of(allocationRow("row-a", List.of(
+                allocationSeat("A1", "A", 0, 1, true), allocationSeat("A2", "A", 0, 2, false),
+                allocationSeat("A3", "A", 0, 3, false)))));
+        var third = users.saveAndFlush(new User("accessible-" + eventId + "@test.local", "unused", UserRole.STUDENT));
+        var firstBooking = book(studentEmail, true, null, false);
+        var secondBooking = book(friendEmail, false, firstBooking.groupCode(), false);
+        var accessibleBooking = book(third.getEmail(), false, null, true);
+        managedSeating.chooseSeat(firstBooking.id(), studentEmail, new SeatAssignmentRequest("A2"));
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(0, run.getSplitGroupCount());
+        assertEquals("A2", seating.ticket(firstBooking.id(), studentEmail).seatCode());
+        assertEquals("A3", seating.ticket(secondBooking.id(), friendEmail).seatCode());
+        assertEquals("A1", seating.ticket(accessibleBooking.id(), third.getEmail()).seatCode());
+    }
+
     @Test void persistsThreeHundredUniqueSeatsWithinTenSeconds() {
         seating.configure(eventId, ownerEmail, new SeatingLayoutRequest(SeatingLayoutRequest.Source.EXTERNAL,
                 SeatingLayoutRequest.Template.FRONT, null, 15, 20, 10, List.of(), List.of(), true));

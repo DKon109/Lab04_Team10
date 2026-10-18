@@ -7,8 +7,20 @@ public record AllocationSeat(
         int rowIndex,
         int seatNumber,
         boolean accessible,
-        boolean blocked
+        boolean blocked,
+        Long elementId
 ) {
+    public AllocationSeat(Long seatId, String section, String rowLabel, int rowIndex,
+            int seatNumber, boolean accessible, boolean blocked) {
+        this(seatId, section, rowLabel, rowIndex, seatNumber, accessible, blocked, null);
+    }
+
+    public boolean sameRow(AllocationSeat other) {
+        return java.util.Objects.equals(elementId, other.elementId)
+                && section.equalsIgnoreCase(other.section)
+                && rowIndex == other.rowIndex && rowLabel.equalsIgnoreCase(other.rowLabel);
+    }
+
     public AllocationSeat {
         if (seatId == null) {
             throw new IllegalArgumentException("seatId is required");
