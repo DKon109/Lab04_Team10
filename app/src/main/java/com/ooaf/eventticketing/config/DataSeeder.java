@@ -10,6 +10,8 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import com.ooaf.eventticketing.service.EventService;
 
 @Component
@@ -43,9 +45,6 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     public void run(String... args) {
         seedDemoOrganiser();
-        if (eventRepository.count() > 0) {
-            return;
-        }
         LocalDateTime now = LocalDateTime.now();
         String usyd = "USYD";
         String sydney = "Sydney";
@@ -176,7 +175,14 @@ public class DataSeeder implements CommandLineRunner {
             event.setStatus(EventStatus.PUBLISHED);
         }
 
-        eventRepository.saveAll(events);
+        // Seed only missing demo fixtures, even when real or previously seeded
+        // events are already present. Existing events retain their dates and state.
+        Set<String> existingImages = eventRepository.findAll().stream()
+                .map(Event::getImageUrl)
+                .collect(Collectors.toSet());
+        eventRepository.saveAll(events.stream()
+                .filter(event -> !existingImages.contains(event.getImageUrl()))
+                .toList());
     }
 
     private void seedDemoOrganiser() {
