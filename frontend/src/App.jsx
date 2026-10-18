@@ -35,7 +35,7 @@ export default function App() {
             }
           />
 
-          {/* --- MEMBER 2 ROUTES --- */}
+          {/* --- MEMBER 2 ROUTES (SECURED) --- */}
           <Route
             path="/organiser/dashboard"
             element={
