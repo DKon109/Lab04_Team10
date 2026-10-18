@@ -40,13 +40,19 @@ public class Booking {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "seat_code", length = 8) private String seatCode;
+    @Column(name = "seat_code", length = 32) private String seatCode;
     @Column(length = 300) private String splitReason;
 
     public String getSeatCode() { return seatCode; }
     public String getSplitReason() { return splitReason; }
     public void assignSeat(String seatCode, String splitReason) {
         this.seatCode = seatCode; this.splitReason = splitReason; this.status = BookingStatus.ALLOCATED;
+    }
+
+    public void unassignSeat() {
+        this.seatCode = null;
+        this.splitReason = null;
+        this.status = BookingStatus.PENDING_ALLOCATION;
     }
 
     public Booking(String bookingRef, Event event, User user, String groupCode, boolean accessibilityRequired, String idempotencyKey){
