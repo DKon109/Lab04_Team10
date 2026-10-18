@@ -5,6 +5,11 @@ import { AuthPage } from './pages/AuthPage';
 import { EventsPage } from './pages/EventsPage';
 import { OrganiserPage } from './pages/OrganiserPage';
 
+// --- MEMBER 2 IMPORTS ---
+import { OrganiserDashboard } from './pages/OrganiserDashboard';
+import { EventCreationWizard } from './pages/EventCreationWizard';
+import { TicketAndSeatMapView } from './pages/TicketAndSeatMapView';
+
 export default function App() {
   return (
     <AuthProvider>
@@ -19,6 +24,8 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          
+          {/* Member 1's original page */}
           <Route
             path="/organiser"
             element={
@@ -27,6 +34,33 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* --- MEMBER 2 ROUTES --- */}
+          <Route
+            path="/organiser/dashboard"
+            element={
+              <ProtectedRoute role="COMMITTEE_MEMBER">
+                <OrganiserDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/organiser/new"
+            element={
+              <ProtectedRoute role="COMMITTEE_MEMBER">
+                <EventCreationWizard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ticket/:bookingId"
+            element={
+              <ProtectedRoute>
+                <TicketAndSeatMapView />
+              </ProtectedRoute>
+            }
+          />
+
           <Route path="*" element={<Navigate to="/events" replace />} />
         </Routes>
       </BrowserRouter>
