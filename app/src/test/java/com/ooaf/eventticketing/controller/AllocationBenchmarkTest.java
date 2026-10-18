@@ -44,7 +44,15 @@ class AllocationBenchmarkTest {
             "CAMPUS_DEMO,48,3,DEFAULT",
             "CAMPUS_DEMO,48,3,PREFER_SAME_ROW",
             "MANAGED,300,0,DEFAULT",
-            "MANAGED,300,0,PREFER_SAME_ROW"
+            "MANAGED,300,0,PREFER_SAME_ROW",
+            "TABLES,300,2,DEFAULT",
+            "TABLES,300,2,PREFER_SAME_ROW",
+            "TABLES,300,7,DEFAULT",
+            "TABLES,300,7,PREFER_SAME_ROW",
+            "TABLES,300,20,DEFAULT",
+            "TABLES,300,20,PREFER_SAME_ROW",
+            "TABLES,300,300,DEFAULT",
+            "TABLES,300,300,PREFER_SAME_ROW"
     })
     void persistsVariedLayoutsWithinTenSeconds(String family, int count, int groupSize, AllocationStrategy strategy) {
         String suffix = UUID.randomUUID().toString();
@@ -55,7 +63,22 @@ class AllocationBenchmarkTest {
         Long eventId = event.getId();
         boolean managed = family.equals("MANAGED");
         Set<String> blocked = new HashSet<>();
-        if (managed) {
+        if (family.equals("TABLES")) {
+            var tables = new ArrayList<SeatMapRequest.ElementRequest>();
+            for (int table = 1; table <= 20; table++) {
+                var seats = new ArrayList<SeatMapRequest.SeatRequest>();
+                for (int side = 0; side < 2; side++) for (int number = 1; number <= 8; number++) {
+                    String label = side == 0 ? "N" : "S";
+                    String code = "T" + table + "-" + label + number;
+                    seats.add(new SeatMapRequest.SeatRequest(code, code, null, "Main", label, side,
+                            number, number * 10, side * 20, number == 1, false, false, List.of("STANDARD")));
+                }
+                tables.add(new SeatMapRequest.ElementRequest("T" + table, SeatingElementType.RECTANGULAR_TABLE,
+                        "Table " + table, null, 0, table * 50, 0, table, false, seats));
+            }
+            maps.saveMap(eventId, owner.getEmail(), new SeatMapRequest("Synthetic tables", false, true, true,
+                    Map.of("STANDARD", 0), tables));
+        } else if (managed) {
             var rows = new ArrayList<SeatMapRequest.ElementRequest>();
             for (int row = 0; row < 16; row++) {
                 var seats = new ArrayList<SeatMapRequest.SeatRequest>();

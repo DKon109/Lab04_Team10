@@ -5,6 +5,8 @@ import java.util.stream.Collectors;
 
 /** Evaluation in logical row/seat steps, not physical distance. Only named groups
  * with at least two confirmed members enter group metrics. No groups => null percentage.
+ * Together means one table (including opposite sides) or one contiguous row block.
+ * Contiguity still measures consecutive seats on each physical row/side separately.
  * General admission => null seat/group metrics. A split's distance includes all
  * unordered member pairs, averaged across all split-group pairs. Mean group contiguity
  * averages retained adjacent connections across groups with at least two members. Duplicate count is
@@ -43,7 +45,7 @@ public record AllocationEvaluation(Integer groupCount, Integer splitGroupCount,
             if (group.size() < 2) continue;
             groupCount++;
             contiguity += AllocationTopology.contiguityPercentage(group);
-            if (AllocationTopology.contiguous(group)) continue;
+            if (AllocationTopology.together(group)) continue;
             splitCount++;
             for (int i = 0; i < group.size(); i++) for (int j = i + 1; j < group.size(); j++) {
                 distance += group.get(i).distanceTo(group.get(j)); pairs++;

@@ -8,8 +8,13 @@ public record AllocationSeat(
         int seatNumber,
         boolean accessible,
         boolean blocked,
-        Long elementId
+        Long elementId,
+        boolean table
 ) {
+    public AllocationSeat(Long seatId, String section, String rowLabel, int rowIndex,
+            int seatNumber, boolean accessible, boolean blocked, Long elementId) {
+        this(seatId, section, rowLabel, rowIndex, seatNumber, accessible, blocked, elementId, false);
+    }
     public AllocationSeat(Long seatId, String section, String rowLabel, int rowIndex,
             int seatNumber, boolean accessible, boolean blocked) {
         this(seatId, section, rowLabel, rowIndex, seatNumber, accessible, blocked, null);
@@ -35,6 +40,7 @@ public record AllocationSeat(
     }
 
     public AllocationSeat {
+        if (table && elementId == null) throw new IllegalArgumentException("Table seats require an elementId");
         if (seatId == null) {
             throw new IllegalArgumentException("seatId is required");
         }
