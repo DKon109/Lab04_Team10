@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 @Service
 public class SeatAllocationService {
@@ -30,50 +31,58 @@ public class SeatAllocationService {
     ) {
         validateInputs(bookings, seats);
 
-        List<AllocationSeat> usableSeats = seats.stream()
-                .filter(seat -> !seat.blocked())
-                .sorted(SEAT_ORDER)
-                .toList();
-        requireCapacity(bookings, usableSeats);
-
+        Map<Long, AllocationSeat> byId = new HashMap<>();
+        seats.forEach(seat -> byId.put(seat.seatId(), seat));
+        Map<Long, AllocationSeat> fixed = new HashMap<>();
+        var occupied = new HashSet<Long>();
+        for (var booking : bookings) {
+            if (booking.assignedSeatId() == null) continue;
+            var seat = byId.get(booking.assignedSeatId());
+            if (seat == null || seat.blocked() || (booking.accessibilityRequired() && !seat.accessible())
+                    || !occupied.add(seat.seatId())) {
+                throw new AllocationException("Existing seat assignment does not satisfy seating constraints");
+            }
+            fixed.put(booking.bookingId(), seat);
+        }
+        List<AllocationSeat> usableSeats = seats.stream().filter(seat -> !seat.blocked())
+                .filter(seat -> !occupied.contains(seat.seatId())).sorted(SEAT_ORDER).toList();
+        var pendingBookings = bookings.stream().filter(b -> b.assignedSeatId() == null).toList();
+        requireCapacity(pendingBookings, usableSeats);
         Map<Long, AllocationSeat> available = new LinkedHashMap<>();
         usableSeats.forEach(seat -> available.put(seat.seatId(), seat));
-
-        List<BookingGroup> groups = groupBookings(bookings);
         List<SeatAssignment> assignments = new ArrayList<>();
         List<GroupSplit> splits = new ArrayList<>();
-        long remainingAccessibleBookings = bookings.stream().filter(AllocationBooking::accessibilityRequired).count();
+        long remainingAccessibleBookings = pendingBookings.stream().filter(AllocationBooking::accessibilityRequired).count();
 
-        for (BookingGroup group : groups) {
+        for (BookingGroup wholeGroup : groupBookings(bookings)) {
+            var pending = wholeGroup.bookings().stream().filter(b -> b.assignedSeatId() == null).toList();
+            var anchors = wholeGroup.bookings().stream().filter(b -> b.assignedSeatId() != null)
+                    .map(b -> fixed.get(b.bookingId())).sorted(SEAT_ORDER).toList();
+            var group = new BookingGroup(wholeGroup.key(), wholeGroup.groupCode(), pending);
             List<AllocationSeat> currentSeats = new ArrayList<>(available.values());
             remainingAccessibleBookings -= accessibleCount(group);
             long maxAccessible = accessibleCount(currentSeats) - remainingAccessibleBookings;
-            List<AllocationSeat> selected = findContiguousBlock(group, currentSeats, maxAccessible);
-            boolean split = false;
-
-            if (selected.isEmpty()) {
-                selected = findNearestCluster(group, currentSeats, maxAccessible);
-                split = group.groupCode() != null && group.bookings().size() > 1;
+            List<AllocationSeat> selected = pending.isEmpty() ? List.of()
+                    : findContiguousBlock(group, currentSeats, maxAccessible, anchors);
+            if (!pending.isEmpty() && selected.isEmpty()) {
+                selected = findNearestCluster(group, currentSeats, maxAccessible, anchors);
             }
-
-            if (selected.isEmpty()) {
-                throw new AllocationException(
-                        "No valid seats remain for group " + group.displayName()
-                );
+            if (selected.size() != pending.size()) {
+                throw new AllocationException("No valid seats remain for group " + wholeGroup.displayName());
             }
-
-            List<SeatAssignment> groupAssignments = assignBookings(group, selected, split);
-            assignments.addAll(groupAssignments);
+            var allSeats = new ArrayList<>(anchors);
+            allSeats.addAll(selected);
+            boolean split = wholeGroup.groupCode() != null && !AllocationTopology.contiguous(allSeats);
+            assignments.addAll(assignBookings(group, selected, split));
+            for (var booking : wholeGroup.bookings()) {
+                if (booking.assignedSeatId() != null) assignments.add(new SeatAssignment(
+                        booking.bookingId(), booking.assignedSeatId(), booking.groupCode(), split));
+            }
             selected.forEach(seat -> available.remove(seat.seatId()));
-
-            if (split) {
-                splits.add(new GroupSplit(
-                        group.groupCode(),
-                        groupAssignments.stream().map(SeatAssignment::bookingId).toList(),
-                        groupAssignments.stream().map(SeatAssignment::seatId).toList(),
-                        "No contiguous valid block was available; nearest valid seats were used"
-                ));
-            }
+            if (split) splits.add(new GroupSplit(wholeGroup.groupCode(),
+                    wholeGroup.bookings().stream().map(AllocationBooking::bookingId).toList(),
+                    allSeats.stream().sorted(SEAT_ORDER).map(AllocationSeat::seatId).toList(),
+                    "No contiguous valid block was available while preserving existing assignments; nearest valid seats were used"));
         }
 
         assignments.sort(Comparator.comparing(SeatAssignment::bookingId));
@@ -149,29 +158,39 @@ public class SeatAllocationService {
     private List<AllocationSeat> findContiguousBlock(
             BookingGroup group,
             List<AllocationSeat> seats,
-            long maxAccessible
+            long maxAccessible,
+            List<AllocationSeat> anchors
     ) {
-        int size = group.bookings().size();
-        long accessibleNeeded = accessibleCount(group);
+        return findContiguousSeats(group.bookings().size(), accessibleCount(group), seats, maxAccessible, anchors);
+    }
+
+    private List<AllocationSeat> findContiguousSeats(int pendingCount, long accessibleNeeded,
+            List<AllocationSeat> seats, long maxAccessible, List<AllocationSeat> anchors) {
+        int size = pendingCount + anchors.size();
         List<List<AllocationSeat>> candidates = new ArrayList<>();
 
         Map<String, List<AllocationSeat>> rows = new LinkedHashMap<>();
-        seats.stream().sorted(SEAT_ORDER).forEach(seat -> {
-            String rowKey = seat.section() + "\u0000" + seat.rowIndex() + "\u0000" + seat.rowLabel();
+        var combined = new ArrayList<>(seats);
+        combined.addAll(anchors);
+        combined.stream().sorted(SEAT_ORDER).forEach(seat -> {
+            String rowKey = seat.elementId() + "\u0000" + seat.section().toUpperCase(Locale.ROOT)
+                    + "\u0000" + seat.rowIndex() + "\u0000" + seat.rowLabel().toUpperCase(Locale.ROOT);
             rows.computeIfAbsent(rowKey, ignored -> new ArrayList<>()).add(seat);
         });
 
         for (List<AllocationSeat> row : rows.values()) {
             for (int start = 0; start + size <= row.size(); start++) {
                 List<AllocationSeat> block = row.subList(start, start + size);
-                if (isConsecutive(block) && accessibleCount(block) >= accessibleNeeded && accessibleCount(block) <= maxAccessible) {
-                    candidates.add(List.copyOf(block));
+                var unassigned = block.stream().filter(seat -> !anchors.contains(seat)).toList();
+                if (block.containsAll(anchors) && isConsecutive(block)
+                        && accessibleCount(unassigned) >= accessibleNeeded && accessibleCount(unassigned) <= maxAccessible) {
+                    candidates.add(unassigned);
                 }
             }
         }
 
         return candidates.stream()
-                .min(candidateComparator(accessibleNeeded))
+                .min(candidateComparator(accessibleNeeded, seats))
                 .orElseGet(List::of);
     }
 
@@ -184,7 +203,7 @@ public class SeatAllocationService {
         return true;
     }
 
-    private Comparator<List<AllocationSeat>> candidateComparator(long accessibleNeeded) {
+    private Comparator<List<AllocationSeat>> candidateComparator(long accessibleNeeded, List<AllocationSeat> available) {
         return Comparator
                 .comparingLong((List<AllocationSeat> candidate) ->
                         accessibleCount(candidate) - accessibleNeeded)
@@ -194,7 +213,8 @@ public class SeatAllocationService {
     private List<AllocationSeat> findNearestCluster(
             BookingGroup group,
             List<AllocationSeat> seats,
-            long maxAccessible
+            long maxAccessible,
+            List<AllocationSeat> anchors
     ) {
         int size = group.bookings().size();
         long accessibleNeeded = accessibleCount(group);
@@ -204,7 +224,7 @@ public class SeatAllocationService {
         for (int start = 0; start + size <= ordered.size(); start++) {
             List<AllocationSeat> cluster = List.copyOf(ordered.subList(start, start + size));
             if (accessibleCount(cluster) >= accessibleNeeded && accessibleCount(cluster) <= maxAccessible) {
-                candidates.add(new ClusterCandidate(cluster, clusterPenalty(cluster)));
+                candidates.add(new ClusterCandidate(cluster, clusterPenalty(cluster) + anchorPenalty(cluster, anchors)));
             }
         }
 
@@ -244,6 +264,16 @@ public class SeatAllocationService {
             }
             penalty += Math.abs(first.rowIndex() - seat.rowIndex()) * 10_000L;
             penalty += Math.abs(first.seatNumber() - seat.seatNumber());
+        }
+        return penalty;
+    }
+
+    private long anchorPenalty(List<AllocationSeat> selected, List<AllocationSeat> anchors) {
+        long penalty = 0;
+        for (var seat : selected) for (var anchor : anchors) {
+            if (!seat.section().equalsIgnoreCase(anchor.section())) penalty += 1_000_000;
+            penalty += Math.abs(seat.rowIndex() - anchor.rowIndex()) * 10_000L;
+            penalty += Math.abs(seat.seatNumber() - anchor.seatNumber());
         }
         return penalty;
     }

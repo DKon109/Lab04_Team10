@@ -160,6 +160,16 @@ class SeatAllocationServiceTest {
         org.junit.jupiter.api.Assertions.assertTrue(elapsedMs < 10_000, "Allocation must finish within 10 seconds on the test machine");
     }
 
+    @Test
+    void rejectsDuplicateOrInaccessibleFixedAssignments() {
+        var seats = row("A", 0, 1, 3);
+        assertThrows(AllocationException.class, () -> service.allocate(List.of(
+                new AllocationBooking(1L, "PAIR", false, 1L),
+                new AllocationBooking(2L, "PAIR", false, 1L)), seats));
+        assertThrows(AllocationException.class, () -> service.allocate(List.of(
+                new AllocationBooking(1L, null, true, 1L)), seats));
+    }
+
     private AllocationBooking booking(Long id, String groupCode, boolean accessibilityRequired) {
         return new AllocationBooking(id, groupCode, accessibilityRequired);
     }
