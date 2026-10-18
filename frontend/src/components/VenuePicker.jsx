@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { request } from '../api/apiClient'; // Added to fetch real data
 import './VenuePicker.css';
 
 const MOCK_ROOMS = [
@@ -53,7 +54,23 @@ export function VenuePicker({ value, onSelect }) {
     hasNumberedSeats: value?.hasNumberedSeats || false,
   });
 
-  const room = MOCK_ROOMS.find((r) => r.id === roomId) || null;
+  // --- NEW: Fetch real rooms from Ryoji's backend ---
+  const [realRooms, setRealRooms] = useState(MOCK_ROOMS); 
+  
+  useEffect(() => {
+    request('/venues')
+      .then((data) => {
+        if (data && data.length > 0) {
+          setRealRooms(data);
+        }
+      })
+      .catch((err) => {
+        console.warn("Using mock rooms: /venues endpoint not ready", err);
+      });
+  }, []);
+  // --------------------------------------------------
+
+  const room = realRooms.find((r) => r.id === roomId) || null;
   const template = TEMPLATES.find((t) => t.id === templateId) || null;
 
   const capacity =
@@ -73,7 +90,7 @@ export function VenuePicker({ value, onSelect }) {
 
   function pickRoom(id) {
     setRoomId(id);
-    const r = MOCK_ROOMS.find((x) => x.id === id);
+    const r = realRooms.find((x) => x.id === id);
     if (r) emit(buildRoomLayout(r));
   }
 
@@ -118,7 +135,8 @@ export function VenuePicker({ value, onSelect }) {
 
       {mode === 'usyd' && (
         <div className="venue-grid">
-          {MOCK_ROOMS.map((r) => {
+          {/* CHANGED: Mapping over realRooms instead of MOCK_ROOMS */}
+          {realRooms.map((r) => {
             const selected = roomId === r.id;
             return (
               <button
