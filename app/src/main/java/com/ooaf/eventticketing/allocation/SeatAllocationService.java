@@ -81,7 +81,7 @@ public class SeatAllocationService {
             }
             var allSeats = new ArrayList<>(anchors);
             allSeats.addAll(selected);
-            boolean split = wholeGroup.groupCode() != null && !AllocationTopology.contiguous(allSeats);
+            boolean split = wholeGroup.groupCode() != null && !AllocationTopology.together(allSeats);
             assignments.addAll(assignBookings(group, selected, split));
             for (var booking : wholeGroup.bookings()) {
                 if (booking.assignedSeatId() != null) assignments.add(new SeatAssignment(
@@ -91,7 +91,7 @@ public class SeatAllocationService {
             if (split) splits.add(new GroupSplit(wholeGroup.groupCode(),
                     wholeGroup.bookings().stream().map(AllocationBooking::bookingId).toList(),
                     allSeats.stream().sorted(SEAT_ORDER).map(AllocationSeat::seatId).toList(),
-                    "No contiguous valid block was available while preserving existing assignments; nearest valid seats were used"));
+                    "No single table or contiguous valid block was available while preserving existing assignments; nearest valid seats were used"));
         }
 
         assignments.sort(Comparator.comparing(SeatAssignment::bookingId));
@@ -267,7 +267,13 @@ public class SeatAllocationService {
         }
         addBalancedClusters(candidates, ordered, anchors, size, accessibleNeeded, maxAccessible);
         Comparator<ClusterCandidate> ranking;
-        if (strategy == AllocationStrategy.PREFER_SAME_ROW) {
+        if (seats.stream().anyMatch(AllocationSeat::table) || anchors.stream().anyMatch(AllocationSeat::table)) {
+            // Table/row units take priority over physical side adjacency in mixed maps.
+            ranking = Comparator.comparingInt(ClusterCandidate::units)
+                    .thenComparingInt(ClusterCandidate::unitImbalance)
+                    .thenComparingInt(ClusterCandidate::blocks)
+                    .thenComparingDouble(ClusterCandidate::distance);
+        } else if (strategy == AllocationStrategy.PREFER_SAME_ROW) {
             ranking = Comparator.comparingInt((ClusterCandidate candidate) -> candidate.rows() == 1 ? 0 : 1)
                     .thenComparingInt(candidate -> candidate.blocks() - candidate.rows())
                     .thenComparingInt(ClusterCandidate::rows)
@@ -287,13 +293,13 @@ public class SeatAllocationService {
                 .map(ClusterCandidate::seats).orElseGet(List::of);
     }
 
-    /** Water-fill row quotas around fixed members, then choose valid seats for each quota. */
+    /** Water-fill table/row quotas around fixed members, then choose valid seats for each quota. */
     private void addBalancedClusters(List<ClusterCandidate> candidates, List<AllocationSeat> available,
             List<AllocationSeat> anchors, int pendingCount, long accessibleNeeded, long maxAccessible) {
         Map<String, List<AllocationSeat>> freeRows = available.stream().collect(Collectors.groupingBy(
-                AllocationTopology::physicalRowKey, LinkedHashMap::new, Collectors.toList()));
+                AllocationTopology::placementUnitKey, LinkedHashMap::new, Collectors.toList()));
         Map<String, List<AllocationSeat>> fixedRows = anchors.stream().collect(Collectors.groupingBy(
-                AllocationTopology::physicalRowKey, LinkedHashMap::new, Collectors.toList()));
+                AllocationTopology::placementUnitKey, LinkedHashMap::new, Collectors.toList()));
         var keys = new LinkedHashSet<>(freeRows.keySet()); keys.addAll(fixedRows.keySet());
         var rows = keys.stream().map(key -> new RowOption(key, freeRows.getOrDefault(key, List.of()),
                 fixedRows.getOrDefault(key, List.of()))).toList();
@@ -371,7 +377,8 @@ public class SeatAllocationService {
                 AllocationTopology.rowSizeImbalance(whole), whole.size(), AllocationTopology.pairwiseDistance(whole),
                 AllocationTopology.isolatedSeats(available,
                         selected.stream().map(AllocationSeat::seatId).collect(Collectors.toSet())),
-                accessible - accessibleNeeded));
+                accessible - accessibleNeeded, AllocationTopology.unitsUsed(whole),
+                AllocationTopology.unitSizeImbalance(whole)));
     }
 
     private List<AllocationSeat> selectFeasible(List<AllocationSeat> ordered, int size,
@@ -455,6 +462,6 @@ public class SeatAllocationService {
     }
 
     private record ClusterCandidate(List<AllocationSeat> seats, int rows, int blocks, int imbalance,
-            int members, double distance, int isolated, long excessAccessible) {
+            int members, double distance, int isolated, long excessAccessible, int units, int unitImbalance) {
     }
 }

@@ -116,11 +116,12 @@ public class SeatingService {
                 Set<String> reservedCodes = bookings.findByEventIdOrderByCreatedAtAsc(eventId).stream()
                         .filter(b -> b.getStatus() != BookingStatus.CANCELLED && b.getSeatCode() != null)
                         .map(Booking::getSeatCode).filter(code -> !fixedCodes.contains(code)).collect(Collectors.toSet());
+                var tableIds = mapManagement.tableElementIds(eventId);
                 var allocationSeats = storedSeats.stream().map(seat -> new AllocationSeat(
                         seat.getId(), seat.getSectionName(), seat.getRowLabel(), seat.getRowIndex(),
                         seat.getSeatNumber(), seat.isAccessible(), seat.isBlocked() || reservedCodes.contains(seat.getCode())
                                 || (seat.isPrivateSeat() && !fixedCodes.contains(seat.getCode())),
-                        seat.getElementId())).toList();
+                        seat.getElementId(), tableIds.contains(seat.getElementId()))).toList();
                 try {
                     var input = confirmed.stream().map(booking -> {
                         VenueSeat assigned = booking.getSeatCode() == null ? null : byCode.get(booking.getSeatCode());
@@ -184,10 +185,11 @@ public class SeatingService {
         Map<String, Long> byCode = new HashMap<>();
         if (managedMaps.existsById(event.getId())) {
             var stored = venueSeats.findByEventIdOrderByElementIdAscRowIndexAscSeatNumberAsc(event.getId());
+            var tableIds = mapManagement.tableElementIds(event.getId());
             stored.forEach(seat -> byCode.put(seat.getCode(), seat.getId()));
             inputSeats = stored.stream().map(seat -> new AllocationSeat(seat.getId(), seat.getSectionName(),
                     seat.getRowLabel(), seat.getRowIndex(), seat.getSeatNumber(), seat.isAccessible(),
-                    seat.isBlocked() || seat.isPrivateSeat(), seat.getElementId())).toList();
+                    seat.isBlocked() || seat.isPrivateSeat(), seat.getElementId(), tableIds.contains(seat.getElementId()))).toList();
         } else {
             var views = seatViews(layouts.findById(event.getId()).orElseThrow(() -> conflict("Layout not found")));
             views.forEach(seat -> byCode.put(seat.code(), seat.id()));

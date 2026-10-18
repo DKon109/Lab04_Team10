@@ -59,6 +59,28 @@ public final class AllocationTopology {
         return !seats.isEmpty() && blockCount(seats) == 1;
     }
 
+    /** Table membership is independent of side, row label and physical adjacency. */
+    public static boolean together(List<AllocationSeat> seats) {
+        return contiguous(seats) || (!seats.isEmpty() && seats.get(0).table()
+                && seats.stream().allMatch(seat -> seat.table()
+                        && Objects.equals(seat.elementId(), seats.get(0).elementId())));
+    }
+
+    /** One placement unit is a table or a physical theatre row. */
+    public static String placementUnitKey(AllocationSeat seat) {
+        return seat.table() ? "TABLE:" + seat.elementId() : "ROW:" + physicalRowKey(seat);
+    }
+
+    public static int unitsUsed(List<AllocationSeat> seats) {
+        return (int) seats.stream().map(AllocationTopology::placementUnitKey).distinct().count();
+    }
+
+    public static int unitSizeImbalance(List<AllocationSeat> seats) {
+        Map<String, Integer> counts = new HashMap<>();
+        seats.forEach(seat -> counts.merge(placementUnitKey(seat), 1, Integer::sum));
+        return counts.isEmpty() ? 0 : Collections.max(counts.values()) - Collections.min(counts.values());
+    }
+
     /** Percentage of possible adjacent connections retained: (members - blocks)/(members - 1). */
     public static double contiguityPercentage(List<AllocationSeat> seats) {
         if (seats.size() < 2) return 100.0;
