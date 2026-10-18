@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { TopNav } from '../components/layout/TopNav';
 import { fetchMyEvents, setEventStatus } from '../api/organiserApi';
 import { formatEventDate } from '../utils/format';
+import { AllocationMetrics } from '../components/AllocationMetrics'; // Added for P10
 
 const STATUS_TABS = [
   { id: 'all', label: 'All' },
@@ -33,7 +34,6 @@ export function OrganiserDashboard() {
     fetchMyEvents({ status: statusFilter })
       .then((data) => {
         if (!cancelled) {
-          // If backend returns empty or fails, use mock data for the demo
           if (!data || data.length === 0) {
             setEvents(MOCK_EVENTS);
           } else {
@@ -44,7 +44,7 @@ export function OrganiserDashboard() {
       .catch((err) => {
         if (!cancelled) {
           console.warn("Using mock events fallback", err);
-          setEvents(MOCK_EVENTS); // Fallback for demo
+          setEvents(MOCK_EVENTS);
         }
       })
       .finally(() => {
@@ -70,7 +70,7 @@ export function OrganiserDashboard() {
         prev.map((ev) => (ev.id === updated.id ? updated : ev))
       );
     } catch (err) {
-      // For demo purposes, update locally if API fails
+      // Update locally if API fails during demo
       setEvents((prev) =>
         prev.map((ev) => (ev.id === eventId ? { ...ev, status: newStatus } : ev))
       );
@@ -143,7 +143,7 @@ export function OrganiserDashboard() {
                     <td style={{ padding: '12px 8px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                         
-                        {/* EDIT BUTTON (Required by Sprint 3) */}
+                        {/* EDIT BUTTON (P6) */}
                         {ev.status === 'draft' && (
                           <Link 
                             to={`/organiser/edit/${ev.id}`} 
@@ -183,6 +183,12 @@ export function OrganiserDashboard() {
             </table>
           </div>
         )}
+
+        {/* P10: METRICS & EXPORT (Rendered below the table) */}
+        {!loading && events.length > 0 && (
+          <AllocationMetrics eventId="demo-event-id" />
+        )}
+
       </main>
     </>
   );
