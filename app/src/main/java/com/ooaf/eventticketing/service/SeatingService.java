@@ -86,12 +86,23 @@ public class SeatingService {
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public AllocationRun allocate(Long eventId, String email) {
+        return allocate(eventId, email, null);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public AllocationRun allocate(Long eventId, String email, AllocationStrategy strategy) {
         long started = System.nanoTime();
         Event event = ownedEvent(eventId, email, true);
         if (event.getRegistrationStatus() != EventRegistrationStatus.CLOSED && event.getStatus() != EventStatus.CLOSED)
             throw conflict("Close registration before allocating seats");
         var existing = runs.findById(eventId);
-        if (existing.isPresent()) return existing.get();
+        if (existing.isPresent()) {
+            if (strategy != null && strategy != existing.get().getStrategy()) {
+                throw conflict("Allocation is final; its strategy cannot be changed");
+            }
+            return existing.get();
+        }
+        AllocationStrategy selectedStrategy = strategy == null ? AllocationStrategy.DEFAULT : strategy;
         var confirmed = confirmedBookings(eventId);
         if (confirmed.isEmpty()) throw conflict("No mock-payment-confirmed bookings to allocate");
         int splitCount = 0, version = 0;
@@ -117,7 +128,7 @@ public class SeatingService {
                         return new AllocationBooking(booking.getId(), booking.getGroupCode(), booking.isAccessibilityRequired(),
                                 assigned == null ? null : assigned.getId());
                     }).toList();
-                    var result = allocator.allocate(input, allocationSeats);
+                    var result = allocator.allocate(input, allocationSeats, selectedStrategy);
                     Map<Long, Booking> byId = confirmed.stream().collect(Collectors.toMap(Booking::getId, booking -> booking));
                     Map<Long, VenueSeat> bySeatId = storedSeats.stream().collect(Collectors.toMap(VenueSeat::getId, seat -> seat));
                     Map<String, String> reasons = result.splits().stream().collect(Collectors.toMap(GroupSplit::groupCode, GroupSplit::reason));
@@ -133,7 +144,7 @@ public class SeatingService {
                 var views = seatViews(layout);
                 var seats = views.stream().map(s -> new AllocationSeat(s.id(), s.section(), String.valueOf((char)('A' + s.row())), s.row(), s.column(), s.accessible(), s.blocked())).toList();
                 try {
-                    var result = allocator.allocate(confirmed.stream().map(b -> new AllocationBooking(b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList(), seats);
+                    var result = allocator.allocate(confirmed.stream().map(b -> new AllocationBooking(b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList(), seats, selectedStrategy);
                     Map<Long, Booking> byId = confirmed.stream().collect(Collectors.toMap(Booking::getId, b -> b));
                     Map<Long, SeatView> seatsById = views.stream().collect(Collectors.toMap(SeatView::id, s -> s));
                     Map<String, String> reasons = result.splits().stream().collect(Collectors.toMap(GroupSplit::groupCode, GroupSplit::reason));
@@ -152,7 +163,8 @@ public class SeatingService {
         if (event.isSeatIdentifiersConfirmed() && managedMaps.existsById(eventId)) {
             splitCount = mapManagement.refreshGroupSplits(eventId);
         }
-        return runs.saveAndFlush(new AllocationRun(eventId, version, confirmed.size(), splitCount, (System.nanoTime() - started) / 1_000_000));
+        return runs.saveAndFlush(new AllocationRun(eventId, version, confirmed.size(), splitCount,
+                (System.nanoTime() - started) / 1_000_000, selectedStrategy));
     }
 
     @Transactional(readOnly = true)
