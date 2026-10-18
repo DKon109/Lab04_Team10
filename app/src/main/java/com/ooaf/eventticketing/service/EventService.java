@@ -16,7 +16,6 @@ import java.util.*;
 import com.ooaf.eventticketing.repository.UserRepository;
 import com.ooaf.eventticketing.entity.User;
 import com.ooaf.eventticketing.entity.UserRole;
-import com.ooaf.eventticketing.service.EventService;
 
 import com.ooaf.eventticketing.entity.EventStatus;
 import org.springframework.transaction.annotation.Transactional;
@@ -240,6 +239,9 @@ public class EventService {
     private boolean matches(Event event, String scope, OrganiserType organiserType,
                             String category, LocalDate date, boolean includePast) {
         if (!includePast && event.getDateTime().isBefore(LocalDateTime.now())) {
+            return false;
+        }
+        if (!"Sydney".equalsIgnoreCase(event.getCity())) {
             return false;
         }
         if (!isAllSydney(scope) && !scope.equalsIgnoreCase(event.getUniversity())) {
