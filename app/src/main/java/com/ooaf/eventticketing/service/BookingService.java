@@ -21,7 +21,7 @@ import java.util.Objects;
 
 @Service
 public class BookingService{
-    private static final int REFERENCE_BYTES = 4;
+    private static final int REFERENCE_BYTES = 8;
 
     private final BookingRepository bookingRepository;
     private final EventRepository eventRepository;

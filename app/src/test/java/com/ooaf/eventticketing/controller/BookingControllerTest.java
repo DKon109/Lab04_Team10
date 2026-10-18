@@ -209,6 +209,25 @@ public class BookingControllerTest{
     }
 
     @Test
+    void groupCodeCannotBeJoinedFromAnotherEvent() throws Exception {
+        String groupCode = createBooking(studentToken, "original-group", true, null);
+        Event other = new Event("Other event", "Description", null,
+                LocalDateTime.now().plusDays(6), "Other hall", "Sydney", "USYD",
+                "USYD Coding Society", OrganiserType.SOCIETY, "Technology", List.of());
+        other.setStatus(EventStatus.PUBLISHED);
+        other.setSeatIdentifiersConfirmed(true);
+        Long otherEventId = eventRepository.saveAndFlush(other).getId();
+
+        mockMvc.perform(post("/api/events/{eventId}/mock-checkout", otherEventId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(secondStudentToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"joinGroupCode\":\"" + groupCode
+                                + "\",\"idempotencyKey\":\"cross-event-group\",\"outcome\":\"SUCCESS\"}"))
+                .andExpect(status().isNotFound());
+        assertTrue(bookingRepository.findByEventIdOrderByCreatedAtAsc(otherEventId).isEmpty());
+    }
+
+    @Test
     void bookingIsRejectedWhenCapacityIsFull() throws Exception {
         createBooking(studentToken, "capacity-one", false, null);
         createBooking(secondStudentToken, "capacity-two", false, null);

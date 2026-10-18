@@ -2,6 +2,7 @@ package com.ooaf.eventticketing.service;
 
 import com.ooaf.eventticketing.dto.*;
 import com.ooaf.eventticketing.entity.CheckoutAttempt;
+import com.ooaf.eventticketing.entity.BookingStatus;
 import com.ooaf.eventticketing.repository.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -46,6 +47,21 @@ public class MockCheckoutService {
             BookingResponse booking = attempt.getBookingId() == null ? null : bookings.findById(attempt.getBookingId())
                     .map(BookingResponse::fromEntity).orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Booking no longer available"));
             return new MockCheckoutResponse(attempt.getPaymentRef(), attempt.getOutcome(), booking);
+        }
+        // Bookings created before checkout attempts were introduced have no audit
+        // row. Preserve retries of their original booking key without inventing
+        // a historical payment or creating a second booking.
+        var legacyBooking = bookings.findByIdempotencyKey(request.idempotencyKey());
+        if (legacyBooking.isPresent()) {
+            var booking = legacyBooking.get();
+            if (!booking.getUser().getId().equals(user.getId())
+                    || !booking.getEvent().getId().equals(eventId)
+                    || request.outcome() != MockCheckoutRequest.Outcome.SUCCESS
+                    || booking.getStatus() == BookingStatus.CANCELLED) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking key has already been used");
+            }
+            return new MockCheckoutResponse(null, MockCheckoutRequest.Outcome.SUCCESS,
+                    BookingResponse.fromEntity(booking));
         }
         BookingResponse booking = null;
         if (event.getStatus() == com.ooaf.eventticketing.entity.EventStatus.DRAFT) {

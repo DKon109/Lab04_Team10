@@ -1,8 +1,10 @@
 package com.ooaf.eventticketing.controller;
 
 import com.ooaf.eventticketing.entity.*;
+import com.ooaf.eventticketing.dto.MockCheckoutRequest;
 import com.ooaf.eventticketing.repository.*;
 import com.ooaf.eventticketing.service.TokenService;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,6 +28,7 @@ class MockCheckoutControllerTest {
     @Autowired CheckoutAttemptRepository attempts;
     @Autowired TokenService tokens;
     @Autowired AuthenticationTokenRepository authenticationTokens;
+    @Autowired EntityManager entityManager;
     Long eventId; String token; String otherToken;
 
     @BeforeEach void seed() {
@@ -43,9 +46,15 @@ class MockCheckoutControllerTest {
         var first = checkout(token, "success-1", "SUCCESS", ",\"createGroup\":true,\"accessibilityRequired\":true")
                 .andExpect(status().isOk()).andExpect(jsonPath("$.booking.status").value("PENDING_ALLOCATION"))
                 .andExpect(jsonPath("$.booking.groupCode").isNotEmpty()).andReturn().getResponse().getContentAsString();
+        // Read the retry from the database, not the first-level JPA cache.
+        entityManager.flush();
+        entityManager.clear();
         var retry = checkout(token, "success-1", "SUCCESS", ",\"createGroup\":true,\"accessibilityRequired\":true")
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         assertEquals(first, retry); assertEquals(1, bookings.count()); assertEquals(1, attempts.count());
+        var storedAttempt = attempts.findByIdempotencyKey("success-1").orElseThrow();
+        assertEquals(MockCheckoutRequest.Outcome.SUCCESS, storedAttempt.getOutcome());
+        assertEquals(bookings.findAll().get(0).getId(), storedAttempt.getBookingId());
     }
     @Test void unsuccessfulOutcomesDoNotConsumeCapacity() throws Exception {
         checkout(token, "decline", "DECLINED", "").andExpect(status().isOk()).andExpect(jsonPath("$.booking").doesNotExist());
@@ -57,7 +66,32 @@ class MockCheckoutControllerTest {
         checkout(token, "used", "DECLINED", "").andExpect(status().isOk());
         checkout(token, "used", "SUCCESS", "").andExpect(status().isConflict());
         checkout(otherToken, "used", "DECLINED", "").andExpect(status().isConflict());
+        checkout(token, "used", "DECLINED", ",\"accessibilityRequired\":true")
+                .andExpect(status().isConflict());
         assertEquals(0, bookings.count());
+    }
+
+    @Test void historicalBookingKeyRetriesWithoutCreatingPaymentHistory() throws Exception {
+        var event = events.findById(eventId).orElseThrow();
+        var user = users.findByEmail("checkout@uni.sydney.edu.au").orElseThrow();
+        var legacy = bookings.saveAndFlush(new Booking("BKG-LEGACY", event, user,
+                null, false, "legacy-booking-key"));
+
+        mvc.perform(post("/api/events/{id}/bookings", eventId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"legacy-booking-key\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(legacy.getId()));
+        checkout(token, "legacy-booking-key", "SUCCESS", "")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.booking.id").value(legacy.getId()));
+        checkout(otherToken, "legacy-booking-key", "SUCCESS", "")
+                .andExpect(status().isConflict());
+        checkout(token, "legacy-booking-key", "DECLINED", "")
+                .andExpect(status().isConflict());
+        assertEquals(1, bookings.count());
+        assertEquals(0, attempts.count());
     }
     @Test void fullEventRejectsAnotherUser() throws Exception {
         checkout(token, "first", "SUCCESS", "").andExpect(status().isOk());
