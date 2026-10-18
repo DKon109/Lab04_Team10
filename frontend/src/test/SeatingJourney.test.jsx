@@ -31,7 +31,32 @@ describe('persisted seating experience', () => {
   it('only exposes allocation for a closed event with confirmed bookings', async () => {
     api.fetchSeating.mockResolvedValue({ ...management, event: { ...management.event, status: 'closed' } });
     renderManagement(); await userEvent.click(await screen.findByRole('button', { name: 'Run allocation' }));
-    expect(api.allocateSeats).toHaveBeenCalledWith('1');
+    expect(api.allocateSeats).toHaveBeenCalledWith('1', 'DEFAULT');
+  });
+  it('sends the selected allocation preference and preserves it after a failed attempt', async () => {
+    api.fetchSeating.mockResolvedValue({ ...management, event: { ...management.event, status: 'closed' } });
+    api.allocateSeats.mockRejectedValueOnce(new Error('Allocation failed. Try again.'));
+    renderManagement();
+    await userEvent.selectOptions(await screen.findByLabelText('Allocation preference'), 'PREFER_SAME_ROW');
+    await userEvent.click(screen.getByRole('button', { name: 'Run allocation' }));
+    expect(api.allocateSeats).toHaveBeenCalledWith('1', 'PREFER_SAME_ROW');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Allocation failed. Try again.');
+    expect(screen.getByLabelText('Allocation preference')).toHaveValue('PREFER_SAME_ROW');
+  });
+  it('shows the persisted preference and locks it after allocation', async () => {
+    api.fetchSeating.mockResolvedValue({ ...management, event: { ...management.event, status: 'closed' },
+      allocation: { strategy: 'PREFER_SAME_ROW', bookingCount: 2, splitGroupCount: 0, elapsedMillis: 10 } });
+    renderManagement();
+    expect(await screen.findByText('Allocation preference: Prefer same row')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run allocation' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Allocation preference')).not.toBeInTheDocument();
+  });
+  it('does not offer seating preferences for general admission', async () => {
+    api.fetchSeating.mockResolvedValue({ ...management, event: { ...management.event, status: 'closed', seatIdentifiersConfirmed: false } });
+    renderManagement();
+    await userEvent.click(await screen.findByRole('button', { name: 'Run allocation' }));
+    expect(screen.queryByLabelText('Allocation preference')).not.toBeInTheDocument();
+    expect(api.allocateSeats).toHaveBeenCalledWith('1', 'DEFAULT');
   });
   it('shows the real assigned seat and split explanation, without mock attendee names', async () => {
     api.fetchTicket.mockResolvedValue({ booking: { eventTitle: 'Film night', bookingRef: 'BKG-123', status: 'ALLOCATED' }, paymentStatus: 'MOCK_SUCCESS', seatCode: 'B2', splitReason: 'No contiguous valid block remained.', generalAdmission: false, eventDate: '2099-01-01T18:00:00', venue: 'Demo hall', layout: null });
