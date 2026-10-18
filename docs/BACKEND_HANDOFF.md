@@ -1,6 +1,6 @@
 # Event and Venue Backend Handoff
 
-Last updated: 18 October 2026
+Last updated: 19 October 2026
 
 ## Responsibilities
 
@@ -38,9 +38,9 @@ shared DTOs, entities and services before editing them.
 Run from the `app` directory against a dedicated test database:
 
 ```bash
-DB_URL='jdbc:mysql://localhost:3306/eventticketingsystemtest?useSSL=false&serverTimezone=UTC' \
-DB_USERNAME=root \
-DB_PASSWORD='' \
+TEST_DB_URL='jdbc:mysql://localhost:3306/eventticketingsystemtest?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC' \
+TEST_DB_USERNAME=root \
+TEST_DB_PASSWORD='' \
 ./mvnw -Dtest=GeneralAdmissionPersistenceTest test
 ```
 
@@ -72,12 +72,40 @@ It does not verify application restart or physical seating layouts.
   This verifies database reload within one transaction, not an
   application restart.
 
+## Campus venue templates
+
+- Ryoji is implementing the campus venue catalogue using the existing
+  managed seating map format.
+- `GET /api/organiser/venue-templates` requires a bearer token with
+  the `COMMITTEE_MEMBER` role.
+- The response is an array containing `id`, `name`, `sourceUrl`
+  and `map`.
+- The initial template is `usyd-seymour-everest`:
+  Seymour Centre - Everest Theatre, with 505 unique seat codes.
+- `sourceUrl` identifies the official seating plan used for the
+  seat numbering. Display coordinates are schematic, not measured
+  room dimensions.
+- Pass the selected template's `map` object as the request body to
+  `PUT /api/organiser/events/{eventId}/seat-map`.
+  Existing ownership and draft editing restrictions apply.
+- The template starts with `identifiersConfirmed: false` and
+  `attendeesChooseSeats: false`. Do not automatically change these
+  flags when selecting or saving the template.
+- Accessible seat identifiers have not been verified. The current
+  `accessible: false` values do not establish that those seats are
+  unsuitable for accessibility needs.
+- Physical layout and accessibility verification remain required
+  before treating the template as a confirmed seating layout.
+- Tests cover seat count, unique codes, missing seats and rows,
+  organiser-only access, and database reload after saving.
+
 ## Pending coordination
 
-- Await Rafly's proposed USYD venue templates before adding
-  competing venue templates.
-- Verify the source and physical room mapping of supplied templates
-  before treating them as confirmed venue layouts.
-- Coordinate existing-data and schema compatibility with Sathish.
-- Verify the complete organiser and attendee workflows with the
-  supplied venue templates once they are integrated.
+- Verify the Everest Theatre physical layout and accessible seat
+  identifiers before marking the template as confirmed.
+- Coordinate catalogue selection and verification messaging with
+  Aadi, reusing the existing managed seating editor.
+- Coordinate allocation compatibility with Rafly and existing-data
+  and schema compatibility with Sathish.
+- Verify the complete organiser and attendee workflows once the
+  template selection interface is integrated.
