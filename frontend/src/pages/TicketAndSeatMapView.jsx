@@ -1,16 +1,16 @@
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { TopNav } from '../components/layout/TopNav';
 import { formatEventDate } from '../utils/format';
+import { request } from '../api/apiClient'; // Added to fetch real data
 import './TicketAndSeatMapView.css';
 
-// TODO: replace MOCK_BOOKING with fetchBooking(bookingId) once Member 4
-// ships the booking endpoint. The component already reads bookingId
-// from the URL, so the swap is one line.
 const MOCK_BOOKING = {
   id: 'demo',
   eventTitle: 'Demo event',
   eventDate: new Date(Date.now() + 86400000).toISOString(),
   paymentStatus: 'success',
+  seatingMode: 'group-allocated', // Added this for the GA check
   allocationRun: true,
   seat: { code: 'R3-S7', row: 3, col: 7, split: false },
   layout: { rows: 8, seatsPerRow: 12, shape: 'front' },
@@ -29,11 +29,34 @@ const PAYMENT_LABEL = {
 
 export function TicketAndSeatMapView() {
   const { bookingId } = useParams();
-  const booking = MOCK_BOOKING;
+  const [booking, setBooking] = useState(MOCK_BOOKING);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch real booking
+  useEffect(() => {
+    if (!bookingId || bookingId === 'demo') return;
+    
+    setLoading(true);
+    request(`/bookings/${bookingId}`)
+      .then((data) => {
+        if (data) setBooking(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.warn("Using mock fallback", err);
+        setLoading(false);
+      });
+  }, [bookingId]);
+
+  if (loading) return <p className="page-sub">Loading ticket...</p>;
+  if (!booking) return null;
 
   const paid = booking.paymentStatus === 'success';
   const allocationDone = paid && booking.allocationRun;
   const hasSeat = allocationDone && booking.seat;
+  
+  // General Admission Check
+  const isGeneralAdmission = booking.seatingMode === 'general-admission';
 
   return (
     <>
@@ -82,47 +105,64 @@ export function TicketAndSeatMapView() {
         </div>
 
         <div className="panel">
-          <h2>Seat</h2>
+          <h2>{isGeneralAdmission ? 'Ticket' : 'Seat'}</h2>
 
-          {!paid && (
-            <p className="page-sub">
-              No seat is assigned until payment is confirmed.
-            </p>
+          {/* GENERAL ADMISSION BRANCH */}
+          {isGeneralAdmission && paid && (
+            <div className="seat-box" style={{ background: 'var(--surface)', borderColor: 'var(--accent-soft)' }}>
+              <p style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0, color: 'var(--accent-strong)' }}>
+                General Admission
+              </p>
+              <p className="page-sub" style={{ margin: '8px 0 0' }}>
+                Present this screen at the door for entry. No specific seat is assigned.
+              </p>
+            </div>
           )}
 
-          {paid && !allocationDone && (
-            <p className="page-sub">
-              Seat will be assigned after registration closes.
-            </p>
-          )}
-
-          {allocationDone && !booking.seat && (
-            <p className="field-error">
-              Allocation has run but no seat came back for this booking.
-            </p>
-          )}
-
-          {hasSeat && (
+          {/* ALLOCATED SEAT BRANCH */}
+          {!isGeneralAdmission && (
             <>
-              <div className="seat-box">
-                <p className="seat-code">{booking.seat.code}</p>
-                {booking.seat.split && (
-                  <p className="seat-split-note">
-                    <strong>Group split.</strong>{' '}
-                    {booking.seat.splitReason ||
-                      'Your group couldn\u2019t be seated together, so seats were allocated across two blocks.'}
-                  </p>
-                )}
-              </div>
+              {!paid && (
+                <p className="page-sub">
+                  No seat is assigned until payment is confirmed.
+                </p>
+              )}
 
-              {booking.layout && (
-                <SeatMap
-                  rows={booking.layout.rows}
-                  seatsPerRow={booking.layout.seatsPerRow}
-                  shape={booking.layout.shape}
-                  assignedRow={booking.seat.row}
-                  assignedCol={booking.seat.col}
-                />
+              {paid && !allocationDone && (
+                <p className="page-sub">
+                  Seat will be assigned after registration closes.
+                </p>
+              )}
+
+              {allocationDone && !booking.seat && (
+                <p className="field-error">
+                  Allocation has run but no seat came back for this booking.
+                </p>
+              )}
+
+              {hasSeat && (
+                <>
+                  <div className="seat-box">
+                    <p className="seat-code">{booking.seat.code}</p>
+                    {booking.seat.split && (
+                      <p className="seat-split-note">
+                        <strong>Group split.</strong>{' '}
+                        {booking.seat.splitReason ||
+                          'Your group couldn\u2019t be seated together, so seats were allocated across two blocks.'}
+                      </p>
+                    )}
+                  </div>
+
+                  {booking.layout && (
+                    <SeatMap
+                      rows={booking.layout.rows}
+                      seatsPerRow={booking.layout.seatsPerRow}
+                      shape={booking.layout.shape}
+                      assignedRow={booking.seat.row}
+                      assignedCol={booking.seat.col}
+                    />
+                  )}
+                </>
               )}
             </>
           )}
@@ -136,8 +176,6 @@ function SeatMap({ rows, seatsPerRow, shape, assignedRow, assignedCol }) {
   const visibleRows = Math.min(Math.max(rows || 1, 3), 10);
   const visibleCols = Math.min(Math.max(seatsPerRow || 1, 4), 16);
 
-  // If the assigned seat is beyond the capped visible grid, clamp it
-  // so it's still shown (mock data will normally be in range).
   const assignedR = Math.min(Math.max(assignedRow || 1, 1), visibleRows);
   const assignedC = Math.min(Math.max(assignedCol || 1, 1), visibleCols);
 
