@@ -14,7 +14,6 @@ const TEMPLATES = [
   { id: 'central', name: 'Central stage', blurb: 'Seats on both sides of a stage in the middle.', shape: 'central' },
 ];
 
-// Exported for unit tests — pure function.
 export function buildRoomLayout(room) {
   return {
     mode: 'usyd',
@@ -28,7 +27,6 @@ export function buildRoomLayout(room) {
   };
 }
 
-// Exported for unit tests — pure function.
 export function buildTemplateLayout(template, config) {
   const capacity = (config.rows || 0) * (config.seatsPerRow || 0);
   if (capacity <= 0) return null;
@@ -54,23 +52,20 @@ export function VenuePicker({ value, onSelect }) {
     hasNumberedSeats: value?.hasNumberedSeats || false,
   });
 
-  // --- Fetch real rooms from backend ---
   const [realRooms, setRealRooms] = useState(MOCK_ROOMS); 
   
   useEffect(() => {
-    // Matches Rafly's @GetMapping("/api/organiser/seating-profiles")
     request('/organiser/seating-profiles')
       .then((data) => {
         if (data && data.length > 0) {
-          // Map Rafly's CampusProfile fields to the frontend format
           const mappedRooms = data.map(room => ({
             id: room.id,
             name: room.name,
-            building: room.notice || 'Campus Room', // Using notice as building description
+            building: room.notice || 'Campus Room',
             capacity: room.rows * room.seatsPerRow,
             rows: room.rows,
             seatsPerRow: room.seatsPerRow,
-            hasNumberedSeats: true, // Default to true unless specified
+            hasNumberedSeats: false, // Fixed to false
             shape: room.template ? room.template.toLowerCase() : 'front'
           }));
           setRealRooms(mappedRooms);
@@ -80,7 +75,6 @@ export function VenuePicker({ value, onSelect }) {
         console.warn("Using mock rooms: endpoint not ready", err);
       });
   }, []);
-  // --------------------------------------------------
 
   const room = realRooms.find((r) => r.id === roomId) || null;
   const template = TEMPLATES.find((t) => t.id === templateId) || null;
