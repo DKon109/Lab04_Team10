@@ -1,5 +1,6 @@
 package com.ooaf.eventticketing.service;
 
+import com.ooaf.eventticketing.allocation.*;
 import com.ooaf.eventticketing.dto.MockCheckoutRequest;
 import com.ooaf.eventticketing.dto.SeatAssignmentRequest;
 import com.ooaf.eventticketing.dto.SeatMapRequest;
@@ -189,6 +190,18 @@ public class SeatingMapManagementService {
         return assignmentView(booking);
     }
 
+    Set<Long> tableElementIds(Long eventId) {
+        return elements.findByEventIdOrderByDisplayOrderAscIdAsc(eventId).stream()
+                .filter(element -> element.getType().isTable()).map(SeatingMapElement::getId)
+                .collect(Collectors.toSet());
+    }
+
+    private AllocationSeat allocationSeat(VenueSeat seat, Set<Long> tableIds) {
+        return new AllocationSeat(seat.getId(), seat.getSectionName(), seat.getRowLabel(),
+                seat.getRowIndex(), seat.getSeatNumber(), seat.isAccessible(),
+                seat.isBlocked() || seat.isPrivateSeat(), seat.getElementId(), tableIds.contains(seat.getElementId()));
+    }
+
     // Re-evaluate complete groups, including seats chosen before batch allocation.
     int refreshGroupSplits(Long eventId) {
         Set<Long> confirmedIds = attempts.findByEventIdAndOutcome(eventId, MockCheckoutRequest.Outcome.SUCCESS)
@@ -206,28 +219,24 @@ public class SeatingMapManagementService {
         }
         Map<String, List<Booking>> groups = confirmed.stream().filter(booking -> booking.getGroupCode() != null)
                 .collect(Collectors.groupingBy(Booking::getGroupCode));
+        var tableIds = tableElementIds(eventId);
         int splitCount = 0;
         for (List<Booking> group : groups.values()) {
-            List<VenueSeat> groupSeats = group.stream().map(booking -> byCode.get(booking.getSeatCode()))
-                    .sorted(Comparator.comparingInt(VenueSeat::getSeatNumber)).toList();
-            VenueSeat first = groupSeats.get(0);
-            boolean contiguous = true;
-            for (int i = 1; i < groupSeats.size(); i++) {
-                VenueSeat seat = groupSeats.get(i);
-                if (!seat.getElementId().equals(first.getElementId())
-                        || !seat.getSectionName().equalsIgnoreCase(first.getSectionName())
-                        || seat.getRowIndex() != first.getRowIndex()
-                        || !seat.getRowLabel().equalsIgnoreCase(first.getRowLabel())
-                        || seat.getSeatNumber() != groupSeats.get(i - 1).getSeatNumber() + 1) {
-                    contiguous = false;
-                    break;
-                }
-            }
-            String reason = contiguous ? null : "Group seats are not contiguous after preserving existing assignments";
-            if (!contiguous) splitCount++;
+            var groupSeats = group.stream().map(booking -> allocationSeat(byCode.get(booking.getSeatCode()), tableIds)).toList();
+            boolean together = AllocationTopology.together(groupSeats);
+            String reason = together ? null : "Group seats are not contiguous or at the same table after preserving existing assignments";
+            if (!together) splitCount++;
             for (Booking booking : group) booking.assignSeat(booking.getSeatCode(), reason);
         }
         bookings.saveAllAndFlush(confirmed);
+        allocationRuns.findById(eventId).ifPresent(run -> {
+            var input = confirmed.stream().map(b -> new AllocationBooking(
+                    b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList();
+            var graph = byCode.values().stream().map(seat -> allocationSeat(seat, tableIds)).toList();
+            var assigned = confirmed.stream().map(b -> new SeatAssignment(
+                    b.getId(), byCode.get(b.getSeatCode()).getId(), b.getGroupCode(), b.getSplitReason() != null)).toList();
+            run.updateEvaluation(AllocationEvaluation.evaluate(input, graph, assigned));
+        });
         return splitCount;
     }
 

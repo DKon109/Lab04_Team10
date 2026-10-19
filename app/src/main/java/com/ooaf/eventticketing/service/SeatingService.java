@@ -86,12 +86,23 @@ public class SeatingService {
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public AllocationRun allocate(Long eventId, String email) {
+        return allocate(eventId, email, null);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public AllocationRun allocate(Long eventId, String email, AllocationStrategy strategy) {
         long started = System.nanoTime();
         Event event = ownedEvent(eventId, email, true);
         if (event.getRegistrationStatus() != EventRegistrationStatus.CLOSED && event.getStatus() != EventStatus.CLOSED)
             throw conflict("Close registration before allocating seats");
         var existing = runs.findById(eventId);
-        if (existing.isPresent()) return existing.get();
+        if (existing.isPresent()) {
+            if (strategy != null && strategy != existing.get().getStrategy()) {
+                throw conflict("Allocation is final; its strategy cannot be changed");
+            }
+            return existing.get();
+        }
+        AllocationStrategy selectedStrategy = strategy == null ? AllocationStrategy.DEFAULT : strategy;
         var confirmed = confirmedBookings(eventId);
         if (confirmed.isEmpty()) throw conflict("No mock-payment-confirmed bookings to allocate");
         int splitCount = 0, version = 0;
@@ -100,36 +111,41 @@ public class SeatingService {
                 var map = managedMaps.findById(eventId).orElseThrow();
                 version = map.getMapVersion();
                 var storedSeats = venueSeats.findByEventIdOrderByElementIdAscRowIndexAscSeatNumberAsc(eventId);
-                Set<String> occupied = bookings.findByEventIdOrderByCreatedAtAsc(eventId).stream()
-                        .filter(booking -> booking.getStatus() != BookingStatus.CANCELLED && booking.getSeatCode() != null)
-                        .map(booking -> booking.getSeatCode().toUpperCase(Locale.ROOT))
-                        .collect(Collectors.toSet());
-                var pending = confirmed.stream().filter(booking -> booking.getSeatCode() == null).toList();
-                if (!pending.isEmpty()) {
-                    var allocationSeats = storedSeats.stream().map(seat -> new AllocationSeat(
-                            seat.getId(), seat.getSectionName(), seat.getRowLabel(), seat.getRowIndex(),
-                            seat.getSeatNumber(), seat.isAccessible(), seat.isBlocked() || seat.isPrivateSeat()
-                                    || occupied.contains(seat.getCode().toUpperCase(Locale.ROOT)))).toList();
-                    try {
-                        var result = allocator.allocate(pending.stream().map(booking -> new AllocationBooking(
-                                booking.getId(), booking.getGroupCode(), booking.isAccessibilityRequired())).toList(), allocationSeats);
-                        Map<Long, Booking> byId = pending.stream().collect(Collectors.toMap(Booking::getId, booking -> booking));
-                        Map<Long, VenueSeat> bySeatId = storedSeats.stream().collect(Collectors.toMap(VenueSeat::getId, seat -> seat));
-                        Map<String, String> reasons = result.splits().stream().collect(Collectors.toMap(GroupSplit::groupCode, GroupSplit::reason));
-                        for (var assignment : result.assignments()) {
-                            byId.get(assignment.bookingId()).assignSeat(bySeatId.get(assignment.seatId()).getCode(),
-                                    assignment.split() ? reasons.get(assignment.groupCode()) : null);
-                        }
-                        splitCount = result.splits().size();
-                    } catch (AllocationException e) { throw conflict(e.getMessage()); }
-                }
+                Map<String, VenueSeat> byCode = storedSeats.stream().collect(Collectors.toMap(VenueSeat::getCode, seat -> seat));
+                Set<String> fixedCodes = confirmed.stream().map(Booking::getSeatCode).filter(Objects::nonNull).collect(Collectors.toSet());
+                Set<String> reservedCodes = bookings.findByEventIdOrderByCreatedAtAsc(eventId).stream()
+                        .filter(b -> b.getStatus() != BookingStatus.CANCELLED && b.getSeatCode() != null)
+                        .map(Booking::getSeatCode).filter(code -> !fixedCodes.contains(code)).collect(Collectors.toSet());
+                var tableIds = mapManagement.tableElementIds(eventId);
+                var allocationSeats = storedSeats.stream().map(seat -> new AllocationSeat(
+                        seat.getId(), seat.getSectionName(), seat.getRowLabel(), seat.getRowIndex(),
+                        seat.getSeatNumber(), seat.isAccessible(), seat.isBlocked() || reservedCodes.contains(seat.getCode())
+                                || (seat.isPrivateSeat() && !fixedCodes.contains(seat.getCode())),
+                        seat.getElementId(), tableIds.contains(seat.getElementId()))).toList();
+                try {
+                    var input = confirmed.stream().map(booking -> {
+                        VenueSeat assigned = booking.getSeatCode() == null ? null : byCode.get(booking.getSeatCode());
+                        if (booking.getSeatCode() != null && assigned == null) throw conflict("Existing assigned seat does not exist");
+                        return new AllocationBooking(booking.getId(), booking.getGroupCode(), booking.isAccessibilityRequired(),
+                                assigned == null ? null : assigned.getId());
+                    }).toList();
+                    var result = allocator.allocate(input, allocationSeats, selectedStrategy);
+                    Map<Long, Booking> byId = confirmed.stream().collect(Collectors.toMap(Booking::getId, booking -> booking));
+                    Map<Long, VenueSeat> bySeatId = storedSeats.stream().collect(Collectors.toMap(VenueSeat::getId, seat -> seat));
+                    Map<String, String> reasons = result.splits().stream().collect(Collectors.toMap(GroupSplit::groupCode, GroupSplit::reason));
+                    for (var assignment : result.assignments()) {
+                        byId.get(assignment.bookingId()).assignSeat(bySeatId.get(assignment.seatId()).getCode(),
+                                assignment.split() ? reasons.get(assignment.groupCode()) : null);
+                    }
+                    splitCount = result.splits().size();
+                } catch (AllocationException e) { throw conflict(e.getMessage()); }
             } else {
                 var layout = layouts.findById(eventId).orElseThrow(() -> conflict("Save a seating layout before allocation"));
                 version = layout.getLayoutVersion();
                 var views = seatViews(layout);
                 var seats = views.stream().map(s -> new AllocationSeat(s.id(), s.section(), String.valueOf((char)('A' + s.row())), s.row(), s.column(), s.accessible(), s.blocked())).toList();
                 try {
-                    var result = allocator.allocate(confirmed.stream().map(b -> new AllocationBooking(b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList(), seats);
+                    var result = allocator.allocate(confirmed.stream().map(b -> new AllocationBooking(b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList(), seats, selectedStrategy);
                     Map<Long, Booking> byId = confirmed.stream().collect(Collectors.toMap(Booking::getId, b -> b));
                     Map<Long, SeatView> seatsById = views.stream().collect(Collectors.toMap(SeatView::id, s -> s));
                     Map<String, String> reasons = result.splits().stream().collect(Collectors.toMap(GroupSplit::groupCode, GroupSplit::reason));
@@ -148,7 +164,45 @@ public class SeatingService {
         if (event.isSeatIdentifiersConfirmed() && managedMaps.existsById(eventId)) {
             splitCount = mapManagement.refreshGroupSplits(eventId);
         }
-        return runs.saveAndFlush(new AllocationRun(eventId, version, confirmed.size(), splitCount, (System.nanoTime() - started) / 1_000_000));
+        var run = new AllocationRun(eventId, version, confirmed.size(), splitCount, 0, selectedStrategy);
+        run.updateEvaluation(evaluation(event, confirmed));
+        // Flush both assignments and the run before measuring the persisted operation.
+        runs.saveAndFlush(run);
+        run.setElapsedMillis((System.nanoTime() - started) / 1_000_000);
+        return runs.saveAndFlush(run);
+    }
+
+    @Transactional(readOnly = true)
+    public AllocationEvaluation metrics(Long eventId, String email) {
+        Event event = ownedEvent(eventId, email, false);
+        if (!runs.existsById(eventId)) throw conflict("Run allocation before reading metrics");
+        return evaluation(event, confirmedBookings(eventId));
+    }
+
+    private AllocationEvaluation evaluation(Event event, List<Booking> confirmed) {
+        if (!event.isSeatIdentifiersConfirmed()) return AllocationEvaluation.generalAdmission();
+        List<AllocationSeat> inputSeats;
+        Map<String, Long> byCode = new HashMap<>();
+        if (managedMaps.existsById(event.getId())) {
+            var stored = venueSeats.findByEventIdOrderByElementIdAscRowIndexAscSeatNumberAsc(event.getId());
+            var tableIds = mapManagement.tableElementIds(event.getId());
+            stored.forEach(seat -> byCode.put(seat.getCode(), seat.getId()));
+            inputSeats = stored.stream().map(seat -> new AllocationSeat(seat.getId(), seat.getSectionName(),
+                    seat.getRowLabel(), seat.getRowIndex(), seat.getSeatNumber(), seat.isAccessible(),
+                    seat.isBlocked() || seat.isPrivateSeat(), seat.getElementId(), tableIds.contains(seat.getElementId()))).toList();
+        } else {
+            var views = seatViews(layouts.findById(event.getId()).orElseThrow(() -> conflict("Layout not found")));
+            views.forEach(seat -> byCode.put(seat.code(), seat.id()));
+            inputSeats = views.stream().map(seat -> new AllocationSeat(seat.id(), seat.section(),
+                    String.valueOf((char) ('A' + seat.row())), seat.row(), seat.column(), seat.accessible(), seat.blocked())).toList();
+        }
+        var input = confirmed.stream().map(b -> new AllocationBooking(b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList();
+        var assigned = confirmed.stream().map(b -> {
+            Long seatId = byCode.get(b.getSeatCode());
+            if (seatId == null) throw conflict("Confirmed booking has no valid seat assignment");
+            return new SeatAssignment(b.getId(), seatId, b.getGroupCode(), b.getSplitReason() != null);
+        }).toList();
+        return AllocationEvaluation.evaluate(input, inputSeats, assigned);
     }
 
     @Transactional(readOnly = true)
