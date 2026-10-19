@@ -5,14 +5,23 @@ import { formatEventDate } from '../utils/format';
 import { request } from '../api/apiClient';
 import './TicketAndSeatMapView.css';
 
-// Updated mock to match Rafly's flat TicketView record
 const MOCK_BOOKING = {
   eventDate: new Date(Date.now() + 86400000).toISOString(),
   paymentStatus: 'MOCK_SUCCESS',
   seatCode: 'R3-S7',
   splitReason: null,
   generalAdmission: false,
-  layout: { rows: 8, seatsPerRow: 12, template: 'FRONT' },
+  layout: { 
+    rows: 6, 
+    seatsPerRow: 10, 
+    template: 'FRONT',
+    // Added mock seats to match Rafly's SeatView record
+    seats: [
+      { id: 1, code: 'R3-S7', row: 2, column: 7, blocked: false, accessible: false },
+      { id: 2, code: 'R1-S1', row: 0, column: 1, blocked: true, accessible: false }, // blocked mock
+      { id: 3, code: 'R2-S2', row: 1, column: 2, blocked: false, accessible: true }  // accessible mock
+    ]
+  },
   booking: { id: 'demo', user: { name: 'You' } }
 };
 
@@ -103,12 +112,8 @@ export function TicketAndSeatMapView() {
 
                   {booking.layout && (
                     <SeatMap
-                      rows={booking.layout.rows || booking.layout.rowCount}
-                      seatsPerRow={booking.layout.seatsPerRow}
-                      shape={booking.layout.template || 'front'}
-                      // We use hardcoded row/col for the visual highlight fallback
-                      assignedRow={3} 
-                      assignedCol={7}
+                      layout={booking.layout}
+                      assignedSeatCode={booking.seatCode}
                     />
                   )}
                 </>
@@ -121,24 +126,52 @@ export function TicketAndSeatMapView() {
   );
 }
 
-function SeatMap({ rows, seatsPerRow, shape, assignedRow, assignedCol }) {
-  const visibleRows = Math.min(Math.max(rows || 1, 3), 10);
-  const visibleCols = Math.min(Math.max(seatsPerRow || 1, 4), 16);
-  const assignedR = Math.min(Math.max(assignedRow || 1, 1), visibleRows);
-  const assignedC = Math.min(Math.max(assignedCol || 1, 1), visibleCols);
+function SeatMap({ layout, assignedSeatCode }) {
+  const shape = layout.template || 'front';
+  const rows = layout.rows || layout.rowCount || 6;
+  const seatsPerRow = layout.seatsPerRow || 10;
+
+  const visibleRows = Math.min(Math.max(rows, 3), 10);
+  const visibleCols = Math.min(Math.max(seatsPerRow, 4), 16);
+
+  // Use Rafly's seat array if available
+  const seatData = layout.seats || [];
 
   const rowEls = Array.from({ length: visibleRows }).map((_, rIdx) => {
-    const r = rIdx + 1;
     const dots = Array.from({ length: visibleCols }).map((__, cIdx) => {
+      const r = rIdx;
       const c = cIdx + 1;
-      const isAssigned = r === assignedR && c === assignedC;
-      return <span key={c} className={isAssigned ? 'seat-map-dot assigned' : 'seat-map-dot'} />;
+      
+      // Find this seat in Rafly's data
+      const seat = seatData.find(s => s.row === r && s.column === c);
+      
+      const isAssigned = seat ? seat.code === assignedSeatCode : false;
+      const isBlocked = seat ? seat.blocked : false;
+      const isAccessible = seat ? seat.accessible : false;
+
+      let className = 'seat-map-dot';
+      if (isAssigned) className += ' assigned';
+      else if (isBlocked) className += ' blocked';
+      else if (isAccessible) className += ' accessible';
+
+      return (
+        <span 
+          key={c} 
+          className={className} 
+          title={seat ? seat.code : `Row ${r}, Col ${c}`}
+        />
+      );
     });
+    
     return (
-      <div 
-        key={r} 
-        className="seat-map-row" 
-        style={shape === 'FAN' || shape === 'fan' ? { paddingLeft: `${(visibleRows - r) * 3}px`, paddingRight: `${(visibleRows - r) * 3}px` } : undefined}
+      <div
+        key={rIdx}
+        className="seat-map-row"
+        style={
+          shape === 'FAN' || shape === 'fan'
+            ? { paddingLeft: `${(visibleRows - rIdx) * 3}px`, paddingRight: `${(visibleRows - rIdx) * 3}px` }
+            : undefined
+        }
       >
         {dots}
       </div>
@@ -161,6 +194,11 @@ function SeatMap({ rows, seatsPerRow, shape, assignedRow, assignedCol }) {
             <div className="seat-map-grid">{rowEls}</div>
           </>
         )}
+      </div>
+      <div style={{ marginTop: '16px', display: 'flex', gap: '16px', fontSize: '12px', justifyContent: 'center' }}>
+        <span><span style={{ display: 'inline-block', width: '10px', height: '10px', background: 'var(--accent-strong)', borderRadius: '50%', marginRight: '6px' }}></span>Your Seat</span>
+        <span><span style={{ display: 'inline-block', width: '10px', height: '10px', background: '#ff4d4d', borderRadius: '50%', marginRight: '6px' }}></span>Blocked</span>
+        <span><span style={{ display: 'inline-block', width: '10px', height: '10px', background: '#4da6ff', borderRadius: '50%', marginRight: '6px' }}></span>Accessible</span>
       </div>
     </div>
   );
