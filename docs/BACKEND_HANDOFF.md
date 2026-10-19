@@ -91,9 +91,13 @@ It does not verify application restart or physical seating layouts.
 - The template starts with `identifiersConfirmed: false` and
   `attendeesChooseSeats: false`. Do not automatically change these
   flags when selecting or saving the template.
-- Accessible seat identifiers have not been verified. The current
-  `accessible: false` values do not establish that those seats are
-  unsuitable for accessibility needs.
+- A12 and A26 are assumed accessible positions for coursework
+  demonstration only, not verified wheelchair spaces.
+  Both have `accessible: true` and a note stating this assumption.
+- Other seats retain `accessible: false`; this is not a verified
+  assessment of their accessibility.
+- The 505-seat count is unchanged. This demo assumption does not
+  model seat removal or capacity changes for wheelchair spaces.
 - Physical layout and accessibility verification remain required
   before treating the template as a confirmed seating layout.
 - Tests cover seat count, unique codes, missing seats and rows,
