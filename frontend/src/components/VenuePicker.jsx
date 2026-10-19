@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { request } from '../api/apiClient'; // Added to fetch real data
+import { request } from '../api/apiClient'; 
 import './VenuePicker.css';
 
 const MOCK_ROOMS = [
@@ -54,18 +54,19 @@ export function VenuePicker({ value, onSelect }) {
     hasNumberedSeats: value?.hasNumberedSeats || false,
   });
 
-  // --- NEW: Fetch real rooms from Ryoji's backend ---
+  // --- Fetch real rooms from backend ---
   const [realRooms, setRealRooms] = useState(MOCK_ROOMS); 
   
   useEffect(() => {
-    request('/venues')
+    // UPDATED: Matches Rafly's @GetMapping("/api/organiser/seating-profiles")
+    request('/organiser/seating-profiles')
       .then((data) => {
         if (data && data.length > 0) {
           setRealRooms(data);
         }
       })
       .catch((err) => {
-        console.warn("Using mock rooms: /venues endpoint not ready", err);
+        console.warn("Using mock rooms: endpoint not ready", err);
       });
   }, []);
   // --------------------------------------------------
@@ -135,7 +136,6 @@ export function VenuePicker({ value, onSelect }) {
 
       {mode === 'usyd' && (
         <div className="venue-grid">
-          {/* CHANGED: Mapping over realRooms instead of MOCK_ROOMS */}
           {realRooms.map((r) => {
             const selected = roomId === r.id;
             return (
