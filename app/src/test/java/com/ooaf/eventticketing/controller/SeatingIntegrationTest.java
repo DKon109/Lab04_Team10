@@ -886,4 +886,52 @@ class SeatingIntegrationTest {
         assertEquals(Integer.valueOf(505), event.getCapacity());
         assertFalse(event.isSeatIdentifiersConfirmed());
     }
+
+    @Test
+    void everestDemoAllocatesAccessibleBookingsToAssumedPositions() {
+        var template = campusTemplates.listTemplates().stream()
+                .filter(item -> "usyd-seymour-everest".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        var source = template.map();
+
+        // Confirm only this synthetic test copy, not the real venue template.
+        var demoMap = new SeatMapRequest(
+                "Everest coursework demo - assumed accessibility",
+                false,
+                source.autoMatchTicketCapacities(),
+                true,
+                source.ticketTypeCapacities(),
+                source.elements()
+        );
+
+        managedSeating.saveMap(eventId, ownerEmail, demoMap);
+        publish();
+
+        var first = book(studentEmail, false, null, true);
+        var second = book(friendEmail, false, null, true);
+
+        close();
+        seating.allocate(eventId, ownerEmail);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        var firstTicket = seating.ticket(first.id(), studentEmail);
+        var secondTicket = seating.ticket(second.id(), friendEmail);
+
+        assertEquals(BookingStatus.ALLOCATED, firstTicket.booking().status());
+        assertEquals(BookingStatus.ALLOCATED, secondTicket.booking().status());
+        assertNotNull(firstTicket.seatCode());
+        assertNotNull(secondTicket.seatCode());
+        assertNotEquals(firstTicket.seatCode(), secondTicket.seatCode());
+
+        assertEquals(
+                Set.of("A12", "A26"),
+                Set.of(firstTicket.seatCode(), secondTicket.seatCode())
+        );
+
+        assertEquals(Boolean.FALSE, source.identifiersConfirmed());
+    }
 }
