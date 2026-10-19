@@ -103,6 +103,54 @@ It does not verify application restart or physical seating layouts.
 - Tests cover seat count, unique codes, missing seats and rows,
   organiser-only access, and database reload after saving.
 
+## Front-stage external template API
+
+- `POST /api/organiser/venue-templates/front-stage` requires a bearer
+  token with the `COMMITTEE_MEMBER` role.
+- Generates a reusable managed seat map without saving it to an event.
+- Example request:
+
+```json
+{
+  "name": "Front-stage demo",
+  "rows": 2,
+  "seatsPerRow": 6,
+  "aisleAfter": 3,
+  "blockedCodes": ["B6"],
+  "accessibleCodes": ["A1"]
+}
+```
+
+- Rows and seats per row must each be between 1 and 20.
+  The total number of seats before excluding blocked seats must not
+  exceed 300.
+- `aisleAfter: 0` means no aisle. Otherwise, the aisle must fall
+  between seats within the row.
+- Seat codes are generated deterministically, starting at A1.
+  Each row is split into separate elements at the aisle boundary
+  so allocation does not treat seats across the aisle as contiguous.
+- Blocked and accessible codes must refer to generated seats.
+  Duplicate codes, overlapping blocked/accessibility flags and
+  layouts with no available seats are rejected.
+- The example produces 12 seats, four row elements and a STANDARD
+  ticket capacity of 11. Display coordinates are schematic.
+- Accessibility flags are supplied by the organiser; the generator
+  does not verify physical venue accessibility.
+- The response is a `SeatMapRequest` object, not a catalogue wrapper.
+  Pass the complete response body to
+  `PUT /api/organiser/events/{eventId}/seat-map` to save it.
+  Existing ownership and draft editing restrictions apply.
+- Generated maps start with `attendeesChooseSeats: false`,
+  `autoMatchTicketCapacities: true` and `identifiersConfirmed: false`.
+  Generation and saving do not confirm that physical seat identifiers
+  are installed or verified.
+- Integration tests cover organiser access, invalid API input,
+  saving and reloading, and a two-person group allocated to adjacent
+  seats on one side of an aisle.
+- This implements the front-stage subset of SCRUM-49.
+  Fan/semicircle and central-stage generation in the common managed
+  map format remain outside this scope.
+
 ## Pending coordination
 
 - Verify the Everest Theatre physical layout and accessible seat

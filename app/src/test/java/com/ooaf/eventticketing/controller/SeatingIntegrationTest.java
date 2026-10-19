@@ -43,6 +43,7 @@ class SeatingIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired EntityManager entityManager;
     @Autowired CampusVenueTemplateService campusTemplates;
+    @Autowired FrontStageTemplateService frontStageTemplates;
     Long eventId; String ownerEmail, studentEmail, friendEmail; User student, friend;
     @BeforeEach void seed() {
         String suffix = UUID.randomUUID().toString();
@@ -933,5 +934,198 @@ class SeatingIntegrationTest {
         );
 
         assertEquals(Boolean.FALSE, source.identifiersConfirmed());
+    }
+
+    @Test
+    void frontStageTemplateCanBeGeneratedOnlyByOrganisers() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+        String studentToken = tokens.issueToken(student).token();
+
+        String body = """
+                {
+                "name": "Front-stage API demo",
+                "rows": 2,
+                "seatsPerRow": 6,
+                "aisleAfter": 3,
+                "blockedCodes": ["B6"],
+                "accessibleCodes": ["A1"]
+                }
+                """;
+
+        String endpoint = "/api/organiser/venue-templates/front-stage";
+
+        mvc.perform(post(endpoint)
+                .header("Authorization", "Bearer " + ownerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Front-stage API demo"))
+
+                .andExpect(jsonPath("$.ticketTypeCapacities.STANDARD").value(11))
+                .andExpect(jsonPath("$.identifiersConfirmed").value(false))
+                .andExpect(jsonPath("$.elements.length()").value(4))
+                .andExpect(jsonPath("$.elements[0].seats[0].code").value("A1"))
+                .andExpect(jsonPath("$.elements[0].seats[0].accessible").value(true))
+                .andExpect(jsonPath("$.elements[3].seats[2].code").value("B6"))
+                .andExpect(jsonPath("$.elements[3].seats[2].blocked").value(true));
+
+        mvc.perform(post(endpoint)
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(post(endpoint)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void frontStageTemplateApiRejectsInvalidInput() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+
+        var invalidBodies = List.of(
+                """
+                        {
+                        "name": "Invalid dimensions",
+                        "rows": 0,
+                        "seatsPerRow": 6,
+                        "aisleAfter": 0,
+                        "blockedCodes": [],
+                        "accessibleCodes": []
+                        }
+                        """,
+                """
+                        {
+                        "name": "Invalid aisle",
+                        "rows": 2,
+                        "seatsPerRow": 6,
+                        "aisleAfter": 6,
+                        "blockedCodes": [],
+                        "accessibleCodes": []
+                        }
+                        """,
+                """
+                        {
+                        "name": "Unknown seat",
+                        "rows": 1,
+                        "seatsPerRow": 3,
+                        "aisleAfter": 0,
+                        "blockedCodes": ["A4"],
+                        "accessibleCodes": []
+                        }
+                        """
+        );
+
+        for (String body : invalidBodies) {
+            mvc.perform(post("/api/organiser/venue-templates/front-stage")
+                            .header("Authorization", "Bearer " + ownerToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
+    void frontStageTemplatesCanBeSavedAndReloaded() {
+        var request = new FrontStageTemplateRequest(
+                "Persisted front-stage demo",
+                2, 6, 3, List.of("B6"), List.of("A1")
+        );
+
+        var map = frontStageTemplates.generate(request);
+        managedSeating.saveMap(eventId, ownerEmail, map);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = managedSeating.organiserMap(eventId, ownerEmail);
+
+        assertEquals("Persisted front-stage demo", reloaded.name());
+        assertEquals(12L, reloaded.totalSeats());
+        assertEquals(11L, reloaded.publicCapacity());
+        assertEquals(4, reloaded.elements().size());
+
+        var seats = reloaded.elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .toList();
+
+        var accessibleSeat = seats.stream()
+                .filter(seat -> seat.code().equals("A1"))
+                .findFirst()
+                .orElseThrow();
+        assertTrue(accessibleSeat.accessible());
+        assertEquals("Left", accessibleSeat.section());
+
+        var blockedSeat = seats.stream()
+                .filter(seat -> seat.code().equals("B6"))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(
+                SeatingMapManagementService.SeatStatus.BLOCKED,
+                blockedSeat.status()
+        );
+        assertEquals("Right", blockedSeat.section());
+
+        var event = events.findById(eventId).orElseThrow();
+        assertEquals(Integer.valueOf(11), event.getCapacity());
+        assertFalse(event.isSeatIdentifiersConfirmed());
+    }
+
+    @Test
+    void frontStageAllocationKeepsGroupOnOneSideOfAisle() {
+        var generated = frontStageTemplates.generate(
+                new FrontStageTemplateRequest(
+                        "Front-stage allocation demo",
+                        1, 4, 2,
+                        List.of(),
+                        List.of()
+                )
+        );
+
+        // Confirm identifiers only for this synthetic allocation fixture.
+        var confirmMap = new SeatMapRequest(
+                generated.name(),
+                generated.attendeesChooseSeats(),
+                generated.autoMatchTicketCapacities(),
+                true,
+                generated.ticketTypeCapacities(),
+                generated.elements()
+        );
+
+        managedSeating.saveMap(eventId, ownerEmail, confirmMap);
+        publish();
+
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+
+        close();
+
+        seating.allocate(eventId, ownerEmail);
+
+        var firstTicket = seating.ticket(first.id(), studentEmail);
+        var secondTicket = seating.ticket(second.id(), friendEmail);
+
+        assertEquals(BookingStatus.ALLOCATED, firstTicket.booking().status());
+        assertEquals(BookingStatus.ALLOCATED, secondTicket.booking().status());
+        assertNotNull(firstTicket.seatCode());
+        assertNotNull(secondTicket.seatCode());
+        assertNotEquals(firstTicket.seatCode(), secondTicket.seatCode());
+
+        Set<String> assignedCodes = Set.of(
+                firstTicket.seatCode(),
+                secondTicket.seatCode()
+        );
+
+        assertTrue(
+                assignedCodes.equals(Set.of("A1", "A2"))
+                || assignedCodes.equals(Set.of("A3", "A4")),
+                "The group must occupy adjacent seats on one side of the aisle"
+        );
+
+        assertEquals(Boolean.FALSE, generated.identifiersConfirmed());
     }
 }
