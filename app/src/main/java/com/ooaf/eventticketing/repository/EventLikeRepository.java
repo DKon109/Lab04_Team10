@@ -1,23 +1,25 @@
 package com.ooaf.eventticketing.repository;
 
+import com.ooaf.eventticketing.entity.Event;
 import com.ooaf.eventticketing.entity.EventLike;
+import com.ooaf.eventticketing.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface EventLikeRepository extends JpaRepository<EventLike, Long> {
 
-    Optional<EventLike> findByUserIdAndEventId(Long userId, Long eventId);
+    boolean existsByUserAndEvent(User user, Event event);
 
-    List<EventLike> findAllByUserIdOrderByCreatedAtDesc(Long userId);
+    long deleteByUserAndEvent(User user, Event event);
 
-    @Query("select l.event.id from EventLike l where l.user.email = :email")
-    List<Long> findEventIdsByUserEmail(@Param("email") String email);
+    @Query("select eventLike from EventLike eventLike " +
+            "join fetch eventLike.event where eventLike.user.email = :email " +
+            "order by eventLike.createdAt desc, eventLike.id desc")
+    List<EventLike> findAllByUserEmailWithEvent(String email);
 
-    /** Rows of [eventId, likeCount] for every event that has at least one like. */
-    @Query("select l.event.id, count(l) from EventLike l group by l.event.id")
-    List<Object[]> countAllGroupedByEvent();
+    @Query("select eventLike.event.id as eventId, count(eventLike) as likeCount " +
+            "from EventLike eventLike group by eventLike.event.id")
+    List<EventLikeCount> countLikesByEvent();
 }

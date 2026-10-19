@@ -61,7 +61,7 @@ function extractError(data, response) {
   return new ApiError(message, response.status, fieldErrors);
 }
 
-export async function request(path, { method = 'GET', body, auth = true } = {}) {
+export async function request(path, { method = 'GET', body, auth = true, responseType = 'json' } = {}) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const token = auth ? getToken() : null;
@@ -94,5 +94,5 @@ export async function request(path, { method = 'GET', body, auth = true } = {}) 
     }
     throw extractError(data, response);
   }
-  return data;
+  return responseType === 'text' ? text : data;
 }

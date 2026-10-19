@@ -3,6 +3,7 @@ package com.ooaf.eventticketing.controller;
 import com.ooaf.eventticketing.entity.Event;
 import com.ooaf.eventticketing.entity.OrganiserType;
 import com.ooaf.eventticketing.repository.EventRepository;
+import com.ooaf.eventticketing.entity.EventStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
+@org.springframework.transaction.annotation.Transactional
 class EventControllerTest {
 
     @Autowired
@@ -54,6 +56,11 @@ class EventControllerTest {
                 "https://example.com/img4.jpg", now.minusDays(10),
                 "Eastern Avenue", "Sydney", "USYD", "USU",
                 OrganiserType.SOCIETY, "Community", List.of("welcome-week")));
+        // Prepare published events for the public listing and detail tests.
+        List<Event> seedEvents = eventRepository.findAll();
+        seedEvents.forEach(event ->
+                event.setStatus(EventStatus.PUBLISHED));
+        eventRepository.saveAllAndFlush(seedEvents);
     }
 
     @Test
@@ -96,6 +103,18 @@ class EventControllerTest {
     }
 
     @Test
+    void listEvents_allSydneyExcludesOtherCities() throws Exception {
+        var melbourne = new Event("Melbourne meetup", "Outside the Sydney feed", null,
+                LocalDateTime.now().plusDays(4), "Town Hall", "Melbourne", null,
+                "Community", OrganiserType.OTHER, "Social", List.of());
+        melbourne.setStatus(EventStatus.PUBLISHED);
+        eventRepository.saveAndFlush(melbourne);
+        mockMvc.perform(get("/api/events"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3));
+    }
+
+    @Test
     void listEvents_filterByOrganiserType() throws Exception {
         mockMvc.perform(get("/api/events").param("organiserType", "FACULTY"))
                 .andExpect(status().isOk())
@@ -116,6 +135,19 @@ class EventControllerTest {
         mockMvc.perform(get("/api/events")
                         .param("scope", "USYD")
                         .param("organiserType", "SOCIETY"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(musicEventId));
+    }
+
+    @Test
+    void listEvents_combinesScopeOrganiserCategoryAndDate() throws Exception {
+        String targetDate = LocalDateTime.now().plusDays(3).toLocalDate().toString();
+        mockMvc.perform(get("/api/events")
+                        .param("scope", "USYD")
+                        .param("organiserType", "SOCIETY")
+                        .param("category", "Music")
+                        .param("date", targetDate))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value(musicEventId));

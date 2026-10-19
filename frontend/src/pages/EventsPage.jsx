@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLikes } from '../hooks/useLikes';
 import { useEvents } from '../hooks/useEvents';
@@ -26,6 +27,13 @@ export function EventsPage() {
   const [date, setDate] = useState('');
   const [search, setSearch] = useState('');
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [likeError, setLikeError] = useState('');
+  const deferredSearch = useDeferredValue(search);
+  const closeDetails = useCallback(() => setSelectedEvent(null), []);
+  function handleLike(event) {
+    setLikeError('');
+    toggleLike(event).catch(e => setLikeError(e.message || 'Could not update your saved event. Please try again.'));
+  }
 
   const { events, loading, error, retry } = useEvents(tab, organiserType, {
     adapter,
@@ -47,8 +55,8 @@ export function EventsPage() {
     let filtered = events;
     if (category) filtered = filtered.filter((e) => e.category === category);
     if (date) filtered = filtered.filter((e) => e.dateTime?.startsWith(date));
-    return searchEvents(filtered, search);
-  }, [events, category, date, search]);
+    return searchEvents(filtered, deferredSearch);
+  }, [events, category, date, deferredSearch]);
 
   const hasActiveFilters = Boolean(category || date || search.trim());
 
@@ -104,7 +112,7 @@ export function EventsPage() {
               event={event}
               liked={likedIds.has(event.id)}
               likeCount={displayCount(event)}
-              onToggleLike={(e) => toggleLike(e).catch(() => {})}
+              onToggleLike={handleLike}
               onOpenDetails={setSelectedEvent}
             />
           ))}
@@ -117,11 +125,24 @@ export function EventsPage() {
     <>
       <TopNav activeTab={tab} onTabChange={changeTab} />
       <main className="page">
-        <h1 className="page-heading">Find your next thing</h1>
+        <section className="discovery-hero" aria-labelledby="discovery-title">
+          <div className="hero-copy"><p className="eyebrow">CAMPUS ENERGY. CITY POSSIBILITIES.</p>
+            <h1 id="discovery-title">Less scrolling.<br />More <em>showing up.</em></h1>
+            <p>Find your people, make a plan, and turn an ordinary week into a good story.</p>
+            <a href="#discover" className="btn btn-primary">Find your next thing ↗</a>
+            <Link to="/bookings" className="hero-secondary">Your bookings →</Link>
+          </div>
+          <div className="hero-art" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" />
+            <div className="hero-ticket"><span>TIXORA / SYDNEY</span><strong>A little<br />out of the<br /><i>ordinary.</i></strong><div className="ticket-perforation" /><span>GOOD PEOPLE. GREAT PLANS.</span><div className="ticket-barcode" /></div>
+            <span className="hero-sticker">SEE YOU<br />THERE ↗</span>
+          </div>
+        </section>
+        <div className="discovery-heading" id="discover"><div><p className="eyebrow">THE DISCOVERY EDIT</p><h2 className="page-heading">Find your next thing</h2>
         <p className="page-sub">
           {TAB_SUBTITLES[tab]}
           {tab === 'FORYOU' && getLikesMode() === 'local' && ' (local demo mode)'}
-        </p>
+        </p></div><span className="feed-count" role="status">{loading ? 'Finding your plans…' : `${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'} to explore`}</span></div>
+        {likeError && <p className="form-banner error" role="alert">{likeError}</p>}
 
         <FilterBar
           tab={tab}
@@ -144,8 +165,8 @@ export function EventsPage() {
           event={selectedEvent}
           liked={likedIds.has(selectedEvent.id)}
           likeCount={displayCount(selectedEvent)}
-          onToggleLike={(e) => toggleLike(e).catch(() => {})}
-          onClose={() => setSelectedEvent(null)}
+          onToggleLike={handleLike}
+          onClose={closeDetails}
         />
       )}
     </>

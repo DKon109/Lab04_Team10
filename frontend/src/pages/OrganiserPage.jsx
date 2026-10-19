@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { TopNav } from '../components/layout/TopNav';
 import { createEvent } from '../api/eventsApi';
+import { request } from '../api/apiClient';
+import { fetchSeating } from '../api/seatingApi';
 
 const EMPTY_FORM = {
   title: '',
@@ -14,18 +16,33 @@ const EMPTY_FORM = {
   imageUrl: '',
   description: '',
   tags: '',
+  capacity: 100,
+  seatIdentifiersConfirmed: false,
 };
 
 /**
- * Sprint 1 organiser dashboard: posting events works end-to-end; the
- * attendees panel is a deliberate placeholder until the booking workflow
- * (a future sprint) exists.
+ * Event publishing surface. The dedicated venue/allocation dashboard is
+ * maintained separately and is not represented as complete here.
  */
 export function OrganiserPage() {
+  const navigate = useNavigate();
+  const { eventId } = useParams();
+  const [ready, setReady] = useState(!eventId);
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [banner, setBanner] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  useEffect(() => {
+    if (!eventId) return;
+    let active = true;
+    fetchSeating(eventId).then(data => {
+      if (!active) return;
+      if (data.event.status !== 'draft') throw new Error('Only draft events can be edited.');
+      setForm({ ...data.event, audience: data.event.university ? 'USYD' : 'SYDNEY', description: data.event.description || '', imageUrl: data.event.imageUrl || '', tags: (data.event.tags || []).join(', ') });
+      setReady(true);
+    }).catch(error => { if (active) setBanner({ type: 'error', text: error.message }); });
+    return () => { active = false; };
+  }, [eventId]);
 
   function update(field) {
     return (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
@@ -38,7 +55,7 @@ export function OrganiserPage() {
     setErrors({});
     setSubmitting(true);
     try {
-      const created = await createEvent({
+      const payload = {
         title: form.title,
         category: form.category,
         dateTime: form.dateTime,
@@ -49,13 +66,15 @@ export function OrganiserPage() {
         organiserType: form.organiserType,
         imageUrl: form.imageUrl || null,
         description: form.description || null,
+        capacity: Number(form.capacity),
+        seatIdentifiersConfirmed: form.seatIdentifiersConfirmed,
         tags: form.tags
           .split(',')
           .map((t) => t.trim().toLowerCase())
           .filter(Boolean),
-      });
-      setBanner({ type: 'success', text: `“${created.title}” is live in the feed.` });
-      setForm(EMPTY_FORM);
+      };
+      const created = eventId ? await request(`/events/${eventId}`, { method: 'PUT', body: payload }) : await createEvent(payload);
+      navigate(`/organiser/events/${created.id}`);
     } catch (error) {
       setErrors(error.fieldErrors || {});
       setBanner({
@@ -74,9 +93,9 @@ export function OrganiserPage() {
     <>
       <TopNav />
       <main className="page">
-        <h1 className="page-heading">Organiser dashboard</h1>
+        <p className="eyebrow">BUILD SOMETHING WORTH SHOWING UP FOR</p><h1 className="page-heading">{eventId ? 'Edit your draft' : 'Create your next event'}</h1>
         <p className="page-sub">
-          Post your event once and reach every student on Tixora. <Link to="/events">Back to the feed</Link>
+          Save a draft, configure the venue, then publish when you're ready. <Link to="/organiser">My events</Link>
         </p>
 
         <div className="organiser-grid">
@@ -171,6 +190,9 @@ export function OrganiserPage() {
                 {fieldError('imageUrl')}
               </div>
 
+              <label className="field">Capacity (1–300)<input type="number" min="1" max="300" required value={form.capacity} onChange={update('capacity')} />{fieldError('capacity')}</label>
+              <label className="check-label"><input type="checkbox" checked={form.seatIdentifiersConfirmed} onChange={e => setForm(previous => ({ ...previous, seatIdentifiersConfirmed: e.target.checked }))} /><span>I confirm permanent or temporary physical seat identifiers will be available at this venue.<span className="subtle">Required for private group booking. Leave unchecked for general admission; this does not create a seat map or run allocation.</span></span></label>
+
               <div className="field">
                 <label htmlFor="ev-description">Description</label>
                 <textarea
@@ -193,21 +215,23 @@ export function OrganiserPage() {
                 />
               </div>
 
-              <button type="submit" className="btn btn-primary" disabled={submitting}>
-                {submitting ? 'Publishing…' : 'Publish event'}
+              <button type="submit" className="btn btn-primary" disabled={submitting || !ready}>
+                {submitting ? 'Saving…' : 'Save draft & configure venue →'}
               </button>
             </form>
           </section>
 
           <section className="panel placeholder-panel" aria-labelledby="attendees-heading">
-            <h2 id="attendees-heading">Attendees</h2>
+            <p className="eyebrow">THE EVENT LIFECYCLE</p><h2 id="attendees-heading">One event. Every step connected.</h2>
             <p>
-              Once ticket booking ships in a later sprint, you'll see everyone attending your
-              events here — live headcounts, check-in status and more.
+              Attendees can now book individually or with a private group, complete mock
+              checkout and review their booking status in My bookings.
             </p>
             <p>
-              <em>Nothing to show yet: the booking workflow isn't part of Sprint 1.</em>
+              Configure your seating template before publishing. When registration closes,
+              run allocation and let attendees view their private tickets and assigned seats.
             </p>
+            <Link className="btn btn-primary" to="/events">Preview attendee experience →</Link>
           </section>
         </div>
       </main>

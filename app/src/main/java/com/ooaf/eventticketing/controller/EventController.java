@@ -5,11 +5,13 @@ import com.ooaf.eventticketing.dto.EventResponse;
 import com.ooaf.eventticketing.entity.OrganiserType;
 import com.ooaf.eventticketing.service.EventService;
 import com.ooaf.eventticketing.service.LikeService;
+import com.ooaf.eventticketing.service.RecommendationService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.ooaf.eventticketing.dto.UpdateEventStatusRequest;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -20,9 +22,13 @@ public class EventController {
     private final EventService eventService;
     private final LikeService likeService;
 
-    public EventController(EventService eventService, LikeService likeService) {
+    private final RecommendationService recommendationService;
+
+    public EventController(EventService eventService, LikeService likeService,
+                           RecommendationService recommendationService) {
         this.eventService = eventService;
         this.likeService = likeService;
+        this.recommendationService = recommendationService;
     }
     /**
      * Examples:
@@ -45,8 +51,9 @@ public class EventController {
 
     /** Personalised feed; requires authentication (enforced in SecurityConfig). */
     @GetMapping("/for-you")
-    public List<EventResponse> forYou(Authentication authentication) {
-        return eventService.forYou(emailOf(authentication));
+    public List<EventResponse> forYou(@RequestParam(required = false) String scope,
+                                      Authentication authentication) {
+        return recommendationService.recommendations(emailOf(authentication), scope);
     }
 
     @GetMapping("/{eventId}")
@@ -69,8 +76,29 @@ public class EventController {
     /** Organiser-only event posting (role enforced in SecurityConfig). */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public EventResponse createEvent(@Valid @RequestBody CreateEventRequest request) {
-        return eventService.createEvent(request);
+    public EventResponse createEvent(@Valid @RequestBody CreateEventRequest request,
+                                     Authentication authentication) {
+        return eventService.createEvent(request,  emailOf(authentication));
+    }
+
+    @PutMapping("/{eventId}")
+    public EventResponse updateEvent(
+            @PathVariable Long eventId,
+            @Valid @RequestBody CreateEventRequest request,
+            Authentication authentication) {
+        return eventService.updateEvent(
+                eventId, request,  emailOf(authentication));
+    }
+
+    @PatchMapping("/{eventId}/status")
+    public EventResponse changeEventStatus(
+            @PathVariable Long eventId,
+            @Valid @RequestBody UpdateEventStatusRequest request,
+            Authentication authentication) {
+        return eventService.changeEventStatus(
+                eventId,
+                request.status(),
+                emailOf(authentication));
     }
 
     private String emailOf(Authentication authentication) {

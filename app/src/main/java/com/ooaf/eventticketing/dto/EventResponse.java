@@ -1,11 +1,13 @@
 package com.ooaf.eventticketing.dto;
 
 import com.ooaf.eventticketing.entity.Event;
+import com.ooaf.eventticketing.entity.EventRegistrationStatus;
 import com.ooaf.eventticketing.entity.OrganiserType;
 import lombok.Value;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 
 @Value
 public class EventResponse {
@@ -23,17 +25,24 @@ public class EventResponse {
     List<String> tags;
     boolean likedByMe;
     Integer likeCount;
+    String status;
+    Integer capacity;
+    EventRegistrationStatus registrationStatus;
+    boolean seatIdentifiersConfirmed;
 
     public static EventResponse fromEntity(Event event) {
-        return fromEntity(event, false, null);
+        return fromEntity(event, false, 0L);
     }
 
-    public static EventResponse fromEntity(Event event, boolean likedByMe, Integer likeCount) {
+    public static EventResponse fromEntity(Event event, boolean likedByMe, long likeCount) {
         return new EventResponse(
-                event.getId(), event.getTitle(), event.getDescription(), event.getImageUrl(),
-                event.getDateTime(), event.getVenue(), event.getCity(), event.getUniversity(),
-                event.getOrganiserName(), event.getOrganiserType(), event.getCategory(),
-                event.getTags(), likedByMe, likeCount
+                event.getId(), event.getTitle(), event.getDescription(),
+                event.getImageUrl(), event.getDateTime(), event.getVenue(),
+                event.getCity(), event.getUniversity(), event.getOrganiserName(),
+                event.getOrganiserType(), event.getCategory(), event.getTags(),
+                likedByMe, Math.toIntExact(likeCount),
+                event.getStatus().name().toLowerCase(Locale.ROOT),
+                 event.getCapacity(), event.getRegistrationStatus(), event.isSeatIdentifiersConfirmed()
         );
     }
 }
