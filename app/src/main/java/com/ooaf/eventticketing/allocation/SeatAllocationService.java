@@ -1,0 +1,309 @@
+package com.ooaf.eventticketing.allocation;
+
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class SeatAllocationService {
+
+    private static final Comparator<AllocationSeat> SEAT_ORDER = Comparator
+            .comparing(AllocationSeat::section, String.CASE_INSENSITIVE_ORDER)
+            .thenComparingInt(AllocationSeat::rowIndex)
+            .thenComparing(AllocationSeat::rowLabel, String.CASE_INSENSITIVE_ORDER)
+            .thenComparingInt(AllocationSeat::seatNumber)
+            .thenComparing(AllocationSeat::seatId);
+
+    private static final Comparator<AllocationBooking> BOOKING_ORDER = Comparator
+            .comparing(AllocationBooking::accessibilityRequired).reversed()
+            .thenComparing(AllocationBooking::bookingId);
+
+    public AllocationResult allocate(
+            List<AllocationBooking> bookings,
+            List<AllocationSeat> seats
+    ) {
+        validateInputs(bookings, seats);
+
+        List<AllocationSeat> usableSeats = seats.stream()
+                .filter(seat -> !seat.blocked())
+                .sorted(SEAT_ORDER)
+                .toList();
+        requireCapacity(bookings, usableSeats);
+
+        Map<Long, AllocationSeat> available = new LinkedHashMap<>();
+        usableSeats.forEach(seat -> available.put(seat.seatId(), seat));
+
+        List<BookingGroup> groups = groupBookings(bookings);
+        List<SeatAssignment> assignments = new ArrayList<>();
+        List<GroupSplit> splits = new ArrayList<>();
+        long remainingAccessibleBookings = bookings.stream().filter(AllocationBooking::accessibilityRequired).count();
+
+        for (BookingGroup group : groups) {
+            List<AllocationSeat> currentSeats = new ArrayList<>(available.values());
+            remainingAccessibleBookings -= accessibleCount(group);
+            long maxAccessible = accessibleCount(currentSeats) - remainingAccessibleBookings;
+            List<AllocationSeat> selected = findContiguousBlock(group, currentSeats, maxAccessible);
+            boolean split = false;
+
+            if (selected.isEmpty()) {
+                selected = findNearestCluster(group, currentSeats, maxAccessible);
+                split = group.groupCode() != null && group.bookings().size() > 1;
+            }
+
+            if (selected.isEmpty()) {
+                throw new AllocationException(
+                        "No valid seats remain for group " + group.displayName()
+                );
+            }
+
+            List<SeatAssignment> groupAssignments = assignBookings(group, selected, split);
+            assignments.addAll(groupAssignments);
+            selected.forEach(seat -> available.remove(seat.seatId()));
+
+            if (split) {
+                splits.add(new GroupSplit(
+                        group.groupCode(),
+                        groupAssignments.stream().map(SeatAssignment::bookingId).toList(),
+                        groupAssignments.stream().map(SeatAssignment::seatId).toList(),
+                        "No contiguous valid block was available; nearest valid seats were used"
+                ));
+            }
+        }
+
+        assignments.sort(Comparator.comparing(SeatAssignment::bookingId));
+        splits.sort(Comparator.comparing(GroupSplit::groupCode, String.CASE_INSENSITIVE_ORDER));
+        return new AllocationResult(assignments, splits);
+    }
+
+    private void validateInputs(List<AllocationBooking> bookings, List<AllocationSeat> seats) {
+        if (bookings == null || seats == null) {
+            throw new IllegalArgumentException("bookings and seats are required");
+        }
+        requireUniqueIds(
+                bookings.stream().map(AllocationBooking::bookingId).toList(),
+                "booking"
+        );
+        requireUniqueIds(
+                seats.stream().map(AllocationSeat::seatId).toList(),
+                "seat"
+        );
+    }
+
+    private void requireUniqueIds(List<Long> ids, String label) {
+        if (new HashSet<>(ids).size() != ids.size()) {
+            throw new IllegalArgumentException("Duplicate " + label + " IDs are not allowed");
+        }
+    }
+
+    private void requireCapacity(
+            List<AllocationBooking> bookings,
+            List<AllocationSeat> usableSeats
+    ) {
+        if (usableSeats.size() < bookings.size()) {
+            throw new AllocationException("Not enough unblocked seats for all bookings");
+        }
+        long accessibleBookings = bookings.stream()
+                .filter(AllocationBooking::accessibilityRequired)
+                .count();
+        long accessibleSeats = usableSeats.stream()
+                .filter(AllocationSeat::accessible)
+                .count();
+        if (accessibleSeats < accessibleBookings) {
+            throw new AllocationException("Not enough accessible seats for accessible bookings");
+        }
+    }
+
+    private List<BookingGroup> groupBookings(List<AllocationBooking> bookings) {
+        Map<String, List<AllocationBooking>> grouped = new HashMap<>();
+        for (AllocationBooking booking : bookings) {
+            String key = booking.groupCode() == null
+                    ? "SOLO:" + booking.bookingId()
+                    : "GROUP:" + booking.groupCode();
+            grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(booking);
+        }
+
+        return grouped.entrySet().stream()
+                .map(entry -> {
+                    List<AllocationBooking> members = entry.getValue().stream()
+                            .sorted(BOOKING_ORDER)
+                            .toList();
+                    return new BookingGroup(
+                            entry.getKey(),
+                            members.get(0).groupCode(),
+                            members
+                    );
+                })
+                .sorted(Comparator
+                        .comparingInt((BookingGroup group) -> group.bookings().size())
+                        .reversed()
+                        .thenComparing(BookingGroup::key, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    private List<AllocationSeat> findContiguousBlock(
+            BookingGroup group,
+            List<AllocationSeat> seats,
+            long maxAccessible
+    ) {
+        int size = group.bookings().size();
+        long accessibleNeeded = accessibleCount(group);
+        List<List<AllocationSeat>> candidates = new ArrayList<>();
+
+        Map<String, List<AllocationSeat>> rows = new LinkedHashMap<>();
+        seats.stream().sorted(SEAT_ORDER).forEach(seat -> {
+            String rowKey = seat.section() + "\u0000" + seat.rowIndex() + "\u0000" + seat.rowLabel();
+            rows.computeIfAbsent(rowKey, ignored -> new ArrayList<>()).add(seat);
+        });
+
+        for (List<AllocationSeat> row : rows.values()) {
+            for (int start = 0; start + size <= row.size(); start++) {
+                List<AllocationSeat> block = row.subList(start, start + size);
+                if (isConsecutive(block) && accessibleCount(block) >= accessibleNeeded && accessibleCount(block) <= maxAccessible) {
+                    candidates.add(List.copyOf(block));
+                }
+            }
+        }
+
+        return candidates.stream()
+                .min(candidateComparator(accessibleNeeded))
+                .orElseGet(List::of);
+    }
+
+    private boolean isConsecutive(List<AllocationSeat> seats) {
+        for (int index = 1; index < seats.size(); index++) {
+            if (seats.get(index).seatNumber() != seats.get(index - 1).seatNumber() + 1) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private Comparator<List<AllocationSeat>> candidateComparator(long accessibleNeeded) {
+        return Comparator
+                .comparingLong((List<AllocationSeat> candidate) ->
+                        accessibleCount(candidate) - accessibleNeeded)
+                .thenComparing(candidate -> candidate.get(0), SEAT_ORDER);
+    }
+
+    private List<AllocationSeat> findNearestCluster(
+            BookingGroup group,
+            List<AllocationSeat> seats,
+            long maxAccessible
+    ) {
+        int size = group.bookings().size();
+        long accessibleNeeded = accessibleCount(group);
+        List<AllocationSeat> ordered = seats.stream().sorted(SEAT_ORDER).toList();
+        List<ClusterCandidate> candidates = new ArrayList<>();
+
+        for (int start = 0; start + size <= ordered.size(); start++) {
+            List<AllocationSeat> cluster = List.copyOf(ordered.subList(start, start + size));
+            if (accessibleCount(cluster) >= accessibleNeeded && accessibleCount(cluster) <= maxAccessible) {
+                candidates.add(new ClusterCandidate(cluster, clusterPenalty(cluster)));
+            }
+        }
+
+        List<AllocationSeat> nearest = candidates.stream()
+                .min(Comparator
+                        .comparingLong(ClusterCandidate::penalty)
+                        .thenComparing(candidate -> candidate.seats().get(0), SEAT_ORDER))
+                .map(ClusterCandidate::seats)
+                .orElseGet(List::of);
+        if (!nearest.isEmpty()) {
+            return nearest;
+        }
+
+        // Accessible seats can be separated by more than one row. Capacity was
+        // validated up front, so build a deterministic fallback rather than
+        // failing a group that still has a valid (but necessarily split) result.
+        List<AllocationSeat> fallback = new ArrayList<>(ordered.stream()
+                .filter(AllocationSeat::accessible)
+                .limit(accessibleNeeded)
+                .toList());
+        ordered.stream()
+                .filter(seat -> !seat.accessible())
+                .filter(seat -> !fallback.contains(seat))
+                .limit(size - fallback.size())
+                .forEach(fallback::add);
+        ordered.stream().filter(AllocationSeat::accessible).filter(seat -> !fallback.contains(seat))
+                .limit(size - fallback.size()).forEach(fallback::add);
+        return fallback.stream().sorted(SEAT_ORDER).toList();
+    }
+
+    private long clusterPenalty(List<AllocationSeat> seats) {
+        AllocationSeat first = seats.get(0);
+        long penalty = 0;
+        for (AllocationSeat seat : seats) {
+            if (!first.section().equalsIgnoreCase(seat.section())) {
+                penalty += 1_000_000;
+            }
+            penalty += Math.abs(first.rowIndex() - seat.rowIndex()) * 10_000L;
+            penalty += Math.abs(first.seatNumber() - seat.seatNumber());
+        }
+        return penalty;
+    }
+
+    private List<SeatAssignment> assignBookings(
+            BookingGroup group,
+            List<AllocationSeat> selected,
+            boolean split
+    ) {
+        List<AllocationSeat> accessibleSeats = selected.stream()
+                .filter(AllocationSeat::accessible)
+                .sorted(SEAT_ORDER)
+                .toList();
+        List<AllocationSeat> regularSeats = selected.stream()
+                .filter(seat -> !seat.accessible())
+                .sorted(SEAT_ORDER)
+                .toList();
+        List<AllocationSeat> remainingAccessible = new ArrayList<>(accessibleSeats);
+        List<AllocationSeat> remainingRegular = new ArrayList<>(regularSeats);
+        List<SeatAssignment> result = new ArrayList<>();
+
+        for (AllocationBooking booking : group.bookings()) {
+            AllocationSeat seat;
+            if (booking.accessibilityRequired()) {
+                seat = remainingAccessible.remove(0);
+            } else if (!remainingRegular.isEmpty()) {
+                seat = remainingRegular.remove(0);
+            } else {
+                seat = remainingAccessible.remove(0);
+            }
+            result.add(new SeatAssignment(
+                    booking.bookingId(),
+                    seat.seatId(),
+                    booking.groupCode(),
+                    split
+            ));
+        }
+        return result;
+    }
+
+    private long accessibleCount(BookingGroup group) {
+        return group.bookings().stream()
+                .filter(AllocationBooking::accessibilityRequired)
+                .count();
+    }
+
+    private long accessibleCount(List<AllocationSeat> seats) {
+        return seats.stream().filter(AllocationSeat::accessible).count();
+    }
+
+    private record BookingGroup(
+            String key,
+            String groupCode,
+            List<AllocationBooking> bookings
+    ) {
+        private String displayName() {
+            return groupCode == null ? key : groupCode;
+        }
+    }
+
+    private record ClusterCandidate(List<AllocationSeat> seats, long penalty) {
+    }
+}

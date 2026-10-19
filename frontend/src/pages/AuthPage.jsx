@@ -27,11 +27,12 @@ export function AuthPage() {
         <h1 className="wordmark">
           Tix<span style={{ opacity: 0.65 }}>o</span>ra
         </h1>
-        <p className="tagline">Your campus. Your crowd. Your next event.</p>
+        <p className="eyebrow">YOUR CAMPUS. YOUR CROWD.</p>
+        <p className="tagline">The best plans<br />start with<br /><em>showing up.</em></p>
         <ul>
-          <li>🎟️ Every USYD society and faculty event in one feed</li>
-          <li>🌏 The best of what's on across Sydney</li>
-          <li>💛 Like events and get a feed that learns your taste</li>
+          <li>01 — Discover campus and Sydney events</li>
+          <li>02 — Bring your friends with private groups</li>
+          <li>03 — Keep your bookings in one place</li>
         </ul>
       </section>
 

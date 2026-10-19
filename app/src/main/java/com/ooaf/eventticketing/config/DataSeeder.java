@@ -1,9 +1,6 @@
 package com.ooaf.eventticketing.config;
 
-import com.ooaf.eventticketing.entity.Event;
-import com.ooaf.eventticketing.entity.OrganiserType;
-import com.ooaf.eventticketing.entity.User;
-import com.ooaf.eventticketing.entity.UserRole;
+import com.ooaf.eventticketing.entity.*;
 import com.ooaf.eventticketing.repository.EventRepository;
 import com.ooaf.eventticketing.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,10 +10,16 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import com.ooaf.eventticketing.service.EventService;
 
 @Component
 @Profile("!test")
 public class DataSeeder implements CommandLineRunner {
+
+    private static final String DEMO_ORGANISER_EMAIL = "committee.demo@uni.sydney.edu.au";
+    private static final String DEMO_ORGANISER_SOCIETY = "USYD Coding Society";
 
     private final EventRepository eventRepository;
     private final UserRepository userRepository;
@@ -42,9 +45,6 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     public void run(String... args) {
         seedDemoOrganiser();
-        if (eventRepository.count() > 0) {
-            return;
-        }
         LocalDateTime now = LocalDateTime.now();
         String usyd = "USYD";
         String sydney = "Sydney";
@@ -170,17 +170,35 @@ public class DataSeeder implements CommandLineRunner {
                         "Sydney Harbour", sydney, null, "City of Sydney", OrganiserType.OTHER,
                         "Festival", List.of("fireworks", "nye"))
         );
-        eventRepository.saveAll(events);
+
+        for (Event event : events) {
+            event.setStatus(EventStatus.PUBLISHED);
+        }
+
+        // Seed only missing demo fixtures, even when real or previously seeded
+        // events are already present. Existing events retain their dates and state.
+        Set<String> existingImages = eventRepository.findAll().stream()
+                .map(Event::getImageUrl)
+                .collect(Collectors.toSet());
+        eventRepository.saveAll(events.stream()
+                .filter(event -> !existingImages.contains(event.getImageUrl()))
+                .toList());
     }
 
     private void seedDemoOrganiser() {
-        String email = "organiser@tixora.demo";
-        if (!userRepository.existsByEmail(email)) {
-            userRepository.save(new User(
-                    email,
+        userRepository.findByEmail(DEMO_ORGANISER_EMAIL)
+                .ifPresentOrElse(this::ensureDemoOrganiserSociety, () -> userRepository.save(new User(
+                    DEMO_ORGANISER_EMAIL,
                     passwordEncoder.encode(demoOrganiserPassword),
-                    UserRole.COMMITTEE_MEMBER
-            ));
+                    UserRole.COMMITTEE_MEMBER,
+                    DEMO_ORGANISER_SOCIETY
+            )));
+    }
+
+    private void ensureDemoOrganiserSociety(User user) {
+        if (user.getSocietyName() == null || user.getSocietyName().isBlank()) {
+            user.setSocietyName(DEMO_ORGANISER_SOCIETY);
+            userRepository.save(user);
         }
     }
 }

@@ -1,5 +1,7 @@
 # Tixora
 
+> **Sprint 3 review branch (12 October 2026):** responsive attendee experience, mock checkout, organiser lifecycle, persisted seating/allocation, private seat-map tickets and anonymous export are now integrated. Start with [Sprint 3 handoff and run commands](docs/SPRINT3_TEJAS.md), [checkout API](docs/MOCK_CHECKOUT_API.md), and [seating API](docs/SEATING_API.md). Campus layouts remain explicitly unverified demos. The Sprint 0/1 descriptions below are historical, not the current implementation contract.
+
 ### Campus ticketing made simpler, fairer and more accessible
 
 **ELEC5619 – Object Oriented Application Frameworks**  
@@ -13,6 +15,24 @@
 > final until 13 Sep 2026). See [`frontend/README.md`](frontend/README.md) to
 > run it and [`INTEGRATION_NOTES.md`](INTEGRATION_NOTES.md) for the current
 > API contract and gaps.
+
+See [Authentication API](AUTH_API.md) for registration, login, current-user endpoints, request/response examples, and authentication errors.
+
+## Run with Docker
+
+The complete application can run with Docker Compose, including MySQL:
+
+```bash
+cp .env.example .env       # optional: customise ports and credentials
+docker compose up --build
+```
+
+Open <http://localhost:5173>. The frontend proxies `/api` requests to the
+backend inside the Compose network. The backend is also available directly at
+<http://localhost:8080> for API development.
+
+Stop the containers with `docker compose down`. Add `--volumes` only when you
+also want to delete the local MySQL data volume.
 
 ## Overview
 

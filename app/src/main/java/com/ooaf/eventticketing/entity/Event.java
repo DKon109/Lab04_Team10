@@ -16,6 +16,14 @@ public class Event {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id")
+    private User owner;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "varchar(32) default 'PUBLISHED'")
+    private EventStatus status =  EventStatus.DRAFT;
+
     @Column(nullable = false)
     private String title;
 
@@ -45,6 +53,13 @@ public class Event {
     @Column(nullable = false)
     private String category;
 
+    @Column(nullable = false, columnDefinition = "integer default 100")
+    private Integer capacity = 100;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32, columnDefinition = "varchar(32) default 'OPEN'")
+    private EventRegistrationStatus registrationStatus = EventRegistrationStatus.OPEN;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "event_tags", joinColumns = @JoinColumn(name = "event_id"))
     @Column(name = "tag")
@@ -69,6 +84,14 @@ public class Event {
     public Long getId() {
         return id;
     }
+
+    public User getOwner() { return owner; }
+
+    public void setOwner(User owner) { this.owner = owner; }
+
+    public EventStatus getStatus() { return status; }
+
+    public void setStatus(EventStatus status) { this.status = status; }
 
     public String getTitle() {
         return title;
@@ -156,5 +179,28 @@ public class Event {
 
     public void setTags(List<String> tags) {
         this.tags = tags;
+    }
+
+    // Nullable for existing databases: unconfirmed legacy events are safely false.
+    @Column
+    private Boolean seatIdentifiersConfirmed = false;
+
+    public boolean isSeatIdentifiersConfirmed() { return Boolean.TRUE.equals(seatIdentifiersConfirmed); }
+    public void setSeatIdentifiersConfirmed(boolean confirmed) { this.seatIdentifiersConfirmed = confirmed; }
+
+    public Integer getCapacity() {
+        return capacity;
+    }
+
+    public void setCapacity(Integer capacity) {
+        this.capacity = capacity;
+    }
+
+    public EventRegistrationStatus getRegistrationStatus() {
+        return registrationStatus;
+    }
+
+    public void setRegistrationStatus(EventRegistrationStatus registrationStatus){
+        this.registrationStatus = registrationStatus;
     }
 }

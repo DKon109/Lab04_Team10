@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TopNav } from '../components/layout/TopNav';
-import { fetchMyEvents, setEventStatus } from '../api/organiserApi';
+import { fetchMyEvents, setEventStatus } from '../api/organiserApi'; // Fixed import
 import { formatEventDate } from '../utils/format';
 import { AllocationMetrics } from '../components/AllocationMetrics';
 
@@ -23,7 +23,7 @@ export function OrganiserDashboard() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState({});
+  const [busy, setBusy] = useState({}); // Fixed missing state
 
   const reload = useCallback(() => {
     let cancelled = false;
@@ -34,7 +34,6 @@ export function OrganiserDashboard() {
       .then((data) => {
         if (!cancelled) {
           if (!data || data.length === 0) {
-            // Filter fallback if backend returns empty
             const filteredMocks = statusFilter === 'all' 
               ? MOCK_EVENTS 
               : MOCK_EVENTS.filter((e) => e.status === statusFilter);
@@ -47,7 +46,6 @@ export function OrganiserDashboard() {
       .catch((err) => {
         if (!cancelled) {
           console.warn("Using mock events fallback", err);
-          // Filter fallback if backend fails
           const filteredMocks = statusFilter === 'all' 
             ? MOCK_EVENTS 
             : MOCK_EVENTS.filter((e) => e.status === statusFilter);
@@ -77,7 +75,6 @@ export function OrganiserDashboard() {
         prev.map((ev) => (ev.id === updated.id ? updated : ev))
       );
     } catch (err) {
-      // Update locally if API fails during demo
       setEvents((prev) =>
         prev.map((ev) => (ev.id === eventId ? { ...ev, status: newStatus } : ev))
       );
@@ -94,10 +91,10 @@ export function OrganiserDashboard() {
     <>
       <TopNav />
       <main className="page">
-        <h1 className="page-heading">My events</h1>
+        <p className="eyebrow">ORGANISER WORKSPACE</p>
+        <h1 className="page-heading">Your events, from first idea to final seat.</h1>
         <p className="page-sub">
-          Manage what you've published. <Link to="/organiser">Back to posting</Link>{' '}
-          · <Link to="/organiser/new">Use the wizard</Link>
+          Manage your drafts, venue layouts and allocation. <Link to="/organiser/new" className="btn btn-primary">Create event +</Link>
         </p>
 
         <div className="segmented" role="tablist" aria-label="Filter by status">
@@ -126,8 +123,8 @@ export function OrganiserDashboard() {
           </div>
         )}
 
-        {!loading && events.length > 0 && (
-          <div className="panel">
+        {!loading && !error && events.length > 0 && (
+          <div className="panel dashboard-table">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--line)' }}>
@@ -150,7 +147,7 @@ export function OrganiserDashboard() {
                     <td style={{ padding: '12px 8px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                         
-                        {/* EDIT BUTTON (P6) */}
+                        {/* Aadi's Buttons */}
                         {ev.status === 'draft' && (
                           <Link 
                             to={`/organiser/edit/${ev.id}`} 
@@ -182,6 +179,9 @@ export function OrganiserDashboard() {
                             Close
                           </button>
                         )}
+
+                        {/* Tejas's Button */}
+                        <Link className="btn btn-primary" to={`/organiser/events/${ev.id}`}>Manage event →</Link>
                       </div>
                     </td>
                   </tr>
@@ -191,7 +191,7 @@ export function OrganiserDashboard() {
           </div>
         )}
 
-        {/* P10: METRICS & EXPORT */}
+        {/* Aadi's Metrics */}
         {!loading && events.length > 0 && (
           <AllocationMetrics eventId="demo-event-id" />
         )}

@@ -26,8 +26,15 @@ npm run dev                     # serves http://localhost:5173
 ```
 
 The Vite dev server proxies `/api/*` to `http://localhost:8080`
-(see `vite.config.js`). This exists because the backend has no CORS
-configuration yet — the browser only ever talks to the Vite origin.
+(see `vite.config.js`), so the browser sends these requests to the
+Vite origin.
+
+The backend also supports CORS for `http://localhost:5173` by default.
+Set `TIXORA_CORS_ALLOWED_ORIGIN` on the backend to allow a different
+frontend origin.
+
+See [Authentication API](../AUTH_API.md) for request and response
+examples, Bearer token usage, error responses, and CORS settings.
 
 Other commands:
 
@@ -78,7 +85,7 @@ comes from the backend. Switching modes requires **no component changes**:
 
 - **Student:** register any `@uni.sydney.edu.au` email on the Sign Up tab
   (password 8–72 chars). Registration auto-logs you in.
-- **Organiser:** the backend seeds `organiser@tixora.demo` /
+- **Organiser:** the backend seeds `committee.demo@uni.sydney.edu.au` /
   `OrganiserDemo1!` (override with the `DEMO_ORGANISER_PASSWORD` backend env
   var). This is a demo-only seed — remove before any real deployment.
 

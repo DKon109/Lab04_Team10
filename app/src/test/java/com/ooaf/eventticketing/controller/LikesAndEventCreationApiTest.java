@@ -7,6 +7,7 @@ import com.ooaf.eventticketing.entity.UserRole;
 import com.ooaf.eventticketing.repository.EventRepository;
 import com.ooaf.eventticketing.repository.UserRepository;
 import com.ooaf.eventticketing.service.TokenService;
+import com.ooaf.eventticketing.repository.EventLikeRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +28,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.ooaf.eventticketing.entity.EventStatus;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import jakarta.persistence.EntityManager;
+
+import javax.print.attribute.standard.Media;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import com.ooaf.eventticketing.entity.EventRegistrationStatus;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -51,18 +62,29 @@ class LikesAndEventCreationApiTest {
 
     private String studentToken;
     private String organiserToken;
+    private String unassignedOrganiserToken;
     private Event techEvent;
     private Event similarTechEvent;
     private Event unrelatedEvent;
+
+    @Autowired
+    private EntityManager entityManager;
+
+    @Autowired
+    private EventLikeRepository eventLikeRepository;
 
     @BeforeEach
     void setUp() {
         User student = userRepository.save(new User(
                 "liker@uni.sydney.edu.au", passwordEncoder.encode("password123"), UserRole.STUDENT));
         User organiser = userRepository.save(new User(
-                "organiser@test.local", passwordEncoder.encode("password123"), UserRole.COMMITTEE_MEMBER));
+                "organiser@test.local", passwordEncoder.encode("password123"), UserRole.COMMITTEE_MEMBER,
+                "Coding Society"));
+        User unassignedOrganiser = userRepository.save(new User(
+                "unassigned.organiser@test.local", passwordEncoder.encode("password123"), UserRole.COMMITTEE_MEMBER));
         studentToken = tokenService.issueToken(student).token();
         organiserToken = tokenService.issueToken(organiser).token();
+        unassignedOrganiserToken = tokenService.issueToken(unassignedOrganiser).token();
 
         LocalDateTime future = LocalDateTime.now().plusDays(5);
         techEvent = eventRepository.save(new Event("Hackathon", "d", null, future,
@@ -74,10 +96,22 @@ class LikesAndEventCreationApiTest {
         unrelatedEvent = eventRepository.save(new Event("Jazz Night", "d", null, future.plusHours(1),
                 "Opera House", "Sydney", null, "Opera House", OrganiserType.OTHER,
                 "Music", List.of("jazz")));
+        // Use published events for the existing discovery and like tests.
+        techEvent.setStatus(EventStatus.PUBLISHED);
+        similarTechEvent.setStatus(EventStatus.PUBLISHED);
+        unrelatedEvent.setStatus(EventStatus.PUBLISHED);
+
+        eventRepository.saveAllAndFlush(
+                List.of(techEvent, similarTechEvent, unrelatedEvent));
     }
 
     @Test
     void likeUnlikeTogglePersistsAndUpdatesCounts() throws Exception {
+        // Repeating a like must still leave exactly one persisted relationship.
+        mockMvc.perform(post("/api/events/" + techEvent.getId() + "/like")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNoContent());
+
         mockMvc.perform(post("/api/events/" + techEvent.getId() + "/like")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isNoContent());
@@ -92,6 +126,10 @@ class LikesAndEventCreationApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].id").value(techEvent.getId()));
+
+        mockMvc.perform(delete("/api/events/" + techEvent.getId() + "/like")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNoContent());
 
         mockMvc.perform(delete("/api/events/" + techEvent.getId() + "/like")
                         .header("Authorization", "Bearer " + studentToken))
@@ -137,7 +175,12 @@ class LikesAndEventCreationApiTest {
                         .header("Authorization", "Bearer " + studentToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validEventJson()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message")
+                        .value("You do not have permission to perform this action"))
+                .andExpect(jsonPath("$.path").value("/api/events"));
     }
 
     @Test
@@ -148,7 +191,36 @@ class LikesAndEventCreationApiTest {
                         .content(validEventJson()))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("Trivia Night"))
-                .andExpect(jsonPath("$.city").value("Sydney"));
+                .andExpect(jsonPath("$.city").value("Sydney"))
+                .andExpect(jsonPath("$.status").value("draft"))
+                .andExpect(jsonPath("$.organiserName").value("Coding Society"));
+
+        Event created = eventRepository.findAll().stream()
+                .filter(event -> "Trivia Night".equals(event.getTitle()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals("organiser@test.local", created.getOwner().getEmail());
+        assertEquals(EventStatus.DRAFT, created.getStatus());
+    }
+
+    @Test
+    void organiserCannotCreateEventForAnotherSociety() throws Exception {
+        mockMvc.perform(post("/api/events")
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validEventJson()
+                                .replace("Coding Society", "Other Society")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void organiserWithoutSocietyCannotCreateEvent() throws Exception {
+        mockMvc.perform(post("/api/events")
+                        .header("Authorization", "Bearer " + unassignedOrganiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validEventJson()))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -161,6 +233,610 @@ class LikesAndEventCreationApiTest {
                 .andExpect(jsonPath("$.errors.title").exists());
     }
 
+    @Test
+    void organiserEventsRequireAuthentication() throws Exception {
+        mockMvc.perform(get("/api/organiser/events"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void studentCannotListOrganiserEvents() throws Exception {
+        mockMvc.perform(get("/api/organiser/events")
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void organiserCanListOnlyOwnEvents() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        techEvent.setOwner(owner);
+        eventRepository.saveAndFlush(techEvent);
+
+        User otherOwner = userRepository.save(new User(
+                "other-organiser@test.local",
+                passwordEncoder.encode("password123"),
+                UserRole.COMMITTEE_MEMBER
+        ));
+
+        similarTechEvent.setOwner(otherOwner);
+        eventRepository.saveAndFlush(similarTechEvent);
+
+        mockMvc.perform(get("/api/organiser/events")
+                        .header("Authorization", "Bearer " + organiserToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(techEvent.getId()));
+    }
+
+    @Test
+    void organiserCanUpdateOwnDraftEvent() throws Exception {
+        // Assign the event to the authenticated organiser.
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Send a full update using the existing valid request data.
+        mockMvc.perform(put("/api/events/{eventId}", eventId)
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validEventJson()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Trivia Night"))
+                .andExpect(jsonPath("$.venue").value("Manning Bar"));
+
+        // Flush changes to the database and clear the persistence context.
+        entityManager.flush();
+        entityManager.clear();
+
+        // Reload the event and verify its updated values, owner, and status.
+        Event updated = eventRepository.findById(eventId).orElseThrow();
+        assertEquals("Trivia Night", updated.getTitle());
+        assertEquals("Manning Bar", updated.getVenue());
+        assertEquals(owner.getId(), updated.getOwner().getId());
+        assertEquals(EventStatus.DRAFT, updated.getStatus());
+    }
+
+    @Test
+    void organiserCannotUpdateAnotherOrganiserEvent() throws Exception {
+        // Assign the event to a different organiser.
+        User otherOwner = userRepository.save(new User(
+                "other-owner@test.local",
+                passwordEncoder.encode("password123"),
+                UserRole.COMMITTEE_MEMBER
+        ));
+        techEvent.setOwner(otherOwner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+        String originalTitle = techEvent.getTitle();
+
+        // Attempt the update using the original organiser's token.
+        mockMvc.perform(put("/api/events/{eventId}", eventId)
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validEventJson()))
+                .andExpect(status().isForbidden());
+
+        // Verify that the rejected request did not change the title.
+        assertEquals(
+                originalTitle,
+                eventRepository.findById(eventId).orElseThrow().getTitle()
+        );
+    }
+
+    @Test
+    void organiserCannotUpdateEventWithoutOwner() throws Exception {
+        // Prepare a draft event without an owner.
+        techEvent.setOwner(null);
+        techEvent.setStatus(EventStatus.DRAFT);
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Verify that an organiser cannot edit an unowned event.
+        mockMvc.perform(put("/api/events/{eventId}", eventId)
+                .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validEventJson()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void studentCannotUpdateEvent()  throws Exception {
+        // Send an update request using a student's token.
+        mockMvc.perform(put("/api/events/{eventId}", techEvent.getId())
+                .header("Authorization", "Bearer " + studentToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validEventJson()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void organiserCannotUpdatePublishedEvent() throws Exception {
+        // Prepare a published event owned by the authenticated organiser.
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.PUBLISHED);
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        //Verify that editing a published event is rejected.
+        mockMvc.perform(put("/api/events/{eventId}", eventId)
+                .header("Authorization", "Bearer " + organiserToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validEventJson()))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void updateEventRequiresAuthentication() throws Exception {
+        // Send an update request without an authentication token.
+        mockMvc.perform(put("/api/events/{eventId}", techEvent.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validEventJson()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void organiserCannotUpdateClosedEvent() throws Exception {
+        // Prepare a closed event owned by the authenticated organiser.
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.CLOSED);
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        //Verify that editing a closed event is rejected.
+        mockMvc.perform(put("/api/events/{eventId}", eventId)
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validEventJson()))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void updatingEventValidatesRequiredFields() throws Exception {
+        // Prepare a draft event owned by the authenticated organiser.
+        User owner = userRepository.findByEmail("organiser@test.local")
+                        .orElseThrow();
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Submit an otherwise valid request with an empty title.
+        String invalidRequest = validEventJson()
+                .replace("\"Trivia Night\"","\"\"");
+
+        mockMvc.perform(put("/api/events/{eventId}", eventId)
+        .header("Authorization", "Bearer " + organiserToken)
+        .contentType(MediaType.APPLICATION_JSON)
+                .content(invalidRequest))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.title").exists());
+    }
+
+    @Test
+    void organiserCanFilterOwnEventsByStatus() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare a draft and a published event owned by the caller.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        eventRepository.saveAndFlush(techEvent);
+
+        similarTechEvent.setOwner(owner);
+        similarTechEvent.setStatus(EventStatus.PUBLISHED);
+        eventRepository.saveAndFlush(similarTechEvent);
+
+        // Prepare another organiser's draft.
+        User otherOwner = userRepository.save(new User(
+                "filter-other@test.local",
+                passwordEncoder.encode("password123"),
+                UserRole.COMMITTEE_MEMBER
+        ));
+
+        unrelatedEvent.setOwner(otherOwner);
+        unrelatedEvent.setStatus(EventStatus.DRAFT);
+        eventRepository.saveAndFlush(unrelatedEvent);
+
+        // Request only the caller's draft events.
+        mockMvc.perform(get("/api/organiser/events")
+                .param("status", "draft")
+                .header("Authorization", "Bearer " + organiserToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(techEvent.getId()))
+                .andExpect(jsonPath("$[0].status").value("draft"));
+    }
+
+    @Test
+    void organiserEventsRejectInvalidStatus() throws Exception {
+        // Reject an unsupported event status.
+        mockMvc.perform(get("/api/organiser/events")
+                .param("status", "unknown")
+                        .header("Authorization", "Bearer " + organiserToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(
+                        "Status must be draft, published, or closed"));
+    }
+
+    @Test
+    void organiserCanPublishOwnDraftEvent() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare a future draft owned by the caller.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        techEvent.setDateTime(LocalDateTime.now().plusDays(5));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Publish the event through the API.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+                .header("Authorization", "Bearer " + organiserToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"status": "published"}
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(eventId))
+                .andExpect(jsonPath("$.status").value("published"));
+
+        // Reload from the database to verify persistence.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event published = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.PUBLISHED, published.getStatus());
+        assertEquals(owner.getId(), published.getOwner().getId());
+    }
+
+    @Test
+    void organiserCanCloseOwnPublishedEvent() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare a published event whose date has already passed.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.PUBLISHED);
+        techEvent.setRegistrationStatus(EventRegistrationStatus.OPEN);
+        techEvent.setDateTime(LocalDateTime.now().minusDays(1));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Close the event through the API.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+        .header("Authorization", "Bearer " + organiserToken)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+                {"status": "closed"}
+        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(eventId))
+                .andExpect(jsonPath("$.status").value("closed"))
+                .andExpect(jsonPath("$.registrationStatus").value("CLOSED"));
+
+        // Reload from the database to verify persistence.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event closed = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.CLOSED, closed.getStatus());
+        assertEquals(EventRegistrationStatus.CLOSED, closed.getRegistrationStatus());
+        assertEquals(owner.getId(), closed.getOwner().getId());
+    }
+
+    @Test
+    void organiserCannotPublishAnotherOrganiserEvent() throws Exception {
+        User otherOwner = userRepository.save(new User(
+                "publish-other@test.local",
+                passwordEncoder.encode("password123"),
+                UserRole.COMMITTEE_MEMBER
+        ));
+
+        // Assign the draft to a different organiser.
+        techEvent.setOwner(otherOwner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        techEvent.setDateTime(LocalDateTime.now().plusDays(5));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Attempt to publish using the original organiser's token.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+                .header("Authorization", "Bearer " + organiserToken)
+        .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"status": "published"}
+                        """))
+                .andExpect(status().isForbidden());
+
+        // Verify that the rejected request did not change the event.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event unchanged = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.DRAFT, unchanged.getStatus());
+        assertEquals(otherOwner.getId(), unchanged.getOwner().getId());
+    }
+
+    @Test
+    void organiserCannotCloseAnotherOrganiserEvent() throws Exception {
+        User otherOwner = userRepository.save(new User(
+                "close-other@test.local",
+                passwordEncoder.encode("password123"),
+                UserRole.COMMITTEE_MEMBER
+        ));
+
+        // Prepare an open, published event owned by another organiser.
+        techEvent.setOwner(otherOwner);
+        techEvent.setStatus(EventStatus.PUBLISHED);
+        techEvent.setRegistrationStatus(EventRegistrationStatus.OPEN);
+        techEvent.setDateTime(LocalDateTime.now().plusDays(5));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Attempt to close the event as a non-owner.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+                .header("Authorization", "Bearer " + organiserToken)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+                        {"status": "closed"}
+        """))
+                .andExpect(status().isForbidden());
+
+        // Reload to verify that the rejected request changed nothing.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event unchanged = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.PUBLISHED, unchanged.getStatus());
+        assertEquals(EventRegistrationStatus.OPEN, unchanged.getRegistrationStatus());
+        assertEquals(otherOwner.getId(), unchanged.getOwner().getId());
+    }
+
+    @Test
+    void organiserCannotPublishPastDraftEvent() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare an owned draft whose event date has passed.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        techEvent.setDateTime(LocalDateTime.now().minusDays(1));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Reject publication after the event date.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+        .header("Authorization", "Bearer " + organiserToken)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+                    {"status": "published"}
+        """))
+                .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.message").value("Event date must be in the future before publishing"));
+
+        // Verify that the event remains a draft.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event unchanged = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.DRAFT, unchanged.getStatus());
+    }
+
+    @Test
+    void organiserCannotCloseDraftEvent() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare a draft owned by the caller.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.DRAFT);
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Reject a direct transition from draft to closed.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {"status": "closed"}
+        """))
+                .andExpect(status().isConflict());
+
+        // Verify that the rejected transition leaves the draft unchanged.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event unchanged = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.DRAFT, unchanged.getStatus());
+    }
+
+    @Test
+    void organiserCannotRepublishClosedEvent() throws Exception {
+        User owner = userRepository.findByEmail("organiser@test.local")
+                .orElseThrow();
+
+        // Prepare a closed event with a future date.
+        techEvent.setOwner(owner);
+        techEvent.setStatus(EventStatus.CLOSED);
+        techEvent.setDateTime(LocalDateTime.now().plusDays(5));
+        Long eventId = eventRepository.saveAndFlush(techEvent).getId();
+
+        // Reject reopening a closed event.
+        mockMvc.perform(patch("/api/events/{eventId}/status", eventId)
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {"status": "published"}
+        """))
+                .andExpect(status().isConflict());
+
+        // Verify that the event remains closed.
+        entityManager.flush();
+        entityManager.clear();
+
+        Event unchanged = eventRepository.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.CLOSED, unchanged.getStatus());
+    }
+
+    @Test
+    void changingEventStatusRequiresAuthentication() throws Exception {
+        // Reject a status change without an authentication token.
+        mockMvc.perform(patch("/api/events/{eventId}/status", techEvent.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"status": "published"}
+                        """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void studentCannotChangeEventStatus() throws Exception {
+        // Reject a status change by a student.
+        mockMvc.perform(patch("/api/events/{eventId}/status", techEvent.getId())
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"status": "published"}
+                        """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void changingEventStatusRequiresStatus() throws Exception {
+        // Reject a request with no status field.
+        mockMvc.perform(patch("/api/events/{eventId}/status", techEvent.getId())
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.status").exists());
+    }
+
+    @Test
+    void changingEventStatusRejectsInvalidStatus() throws Exception {
+        // Reject an unsupported target status.
+        mockMvc.perform(patch("/api/events/{eventId}/status", techEvent.getId())
+                        .header("Authorization", "Bearer " + organiserToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"status": "unknown"}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.status").value(
+                        "Status must be published or closed"));
+    }
+
+    @Test
+    void publicEventListShowsOnlyPublishedEvents() throws Exception {
+        // Prepare one event in each lifecycle state.
+        techEvent.setStatus(EventStatus.DRAFT);
+        similarTechEvent.setStatus(EventStatus.PUBLISHED);
+        unrelatedEvent.setStatus(EventStatus.CLOSED);
+
+        eventRepository.saveAllAndFlush(
+                List.of(techEvent, similarTechEvent, unrelatedEvent));
+
+        // Public discovery must return only the published event.
+        mockMvc.perform(get("/api/events"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$",  hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(similarTechEvent.getId()))
+                .andExpect(jsonPath("$[0].status").value("published"));
+    }
+
+    @Test
+    void publicEventDetailsHideDraftEvents() throws Exception {
+        // Hide draft details even when the event ID is known.
+        techEvent.setStatus(EventStatus.DRAFT);
+        eventRepository.saveAndFlush(techEvent);
+
+        mockMvc.perform(get("/api/events/{eventId}", techEvent.getId()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void publicEventDetailsHideClosedEvents() throws Exception {
+        // Hide closed events from the public detail endpoint.
+        techEvent.setStatus(EventStatus.CLOSED);
+        eventRepository.saveAndFlush(techEvent);
+
+        mockMvc.perform(get("/api/events/{eventId}", techEvent.getId()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void forYouShowsOnlyPublishedEvents() throws Exception {
+        // Prepare future events in different lifecycle states.
+        techEvent.setStatus(EventStatus.DRAFT);
+        similarTechEvent.setStatus(EventStatus.PUBLISHED);
+        unrelatedEvent.setStatus(EventStatus.CLOSED);
+
+        eventRepository.saveAllAndFlush(
+                List.of(techEvent, similarTechEvent, unrelatedEvent));
+
+        // Recommendations must exclude draft and closed events.
+        mockMvc.perform(get("/api/events/for-you")
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$",  hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(similarTechEvent.getId()))
+                .andExpect(jsonPath("$[0].status").value("published"));
+    }
+
+    @Test
+    void studentCannotLikeDraftEvent() throws Exception {
+        // Reject likes on a draft even when its ID is known.
+        techEvent.setStatus(EventStatus.DRAFT);
+        eventRepository.saveAndFlush(techEvent);
+
+        mockMvc.perform(post("/api/events/{eventId}/like", techEvent.getId())
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void studentCannotLikeClosedEvent() throws Exception {
+        // Reject new likes on a closed event.
+        techEvent.setStatus(EventStatus.CLOSED);
+        eventRepository.saveAndFlush(techEvent);
+
+        mockMvc.perform(post("/api/events/{eventId}/like", techEvent.getId())
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void closedEventIsHiddenFromLikesButCanStillBeUnliked() throws Exception {
+        // Like an event while it is published.
+        mockMvc.perform(post("/api/events/{eventId}/like", techEvent.getId())
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNoContent());
+
+        // Close the event and verify it disappears from the liked list.
+        techEvent.setStatus(EventStatus.CLOSED);
+        eventRepository.saveAndFlush(techEvent);
+
+        mockMvc.perform(get("/api/users/me/liked-events")
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$",  hasSize(0)));
+
+        User student = userRepository.findByEmail("liker@uni.sydney.edu.au")
+                .orElseThrow();
+
+        assertEquals(true,
+                eventLikeRepository.existsByUserAndEvent(student, techEvent));
+
+        // Allow the user to remove the existing like after closure.
+        mockMvc.perform(delete("/api/events/{eventId}/like", techEvent.getId())
+                .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isNoContent());
+
+        entityManager.flush();
+
+        assertEquals(false,
+                eventLikeRepository.existsByUserAndEvent(student, techEvent));
+    }
+
     private String validEventJson() {
         return """
                 {
@@ -169,7 +845,7 @@ class LikesAndEventCreationApiTest {
                   "dateTime": "%s",
                   "venue": "Manning Bar",
                   "university": "USYD",
-                  "organiserName": "USU",
+                  "organiserName": "Coding Society",
                   "organiserType": "SOCIETY",
                   "category": "Games",
                   "tags": ["trivia"]
