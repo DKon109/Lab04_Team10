@@ -37,7 +37,8 @@ export function TicketAndSeatMapView() {
     if (!bookingId || bookingId === 'demo') return;
     
     setLoading(true);
-    request(`/bookings/${bookingId}`)
+    // UPDATED: Matches Rafly's @GetMapping("/api/bookings/{id}/ticket")
+    request(`/bookings/${bookingId}/ticket`)
       .then((data) => {
         if (data) setBooking(data);
         setLoading(false);

@@ -5,24 +5,24 @@ export function AllocationMetrics({ eventId }) {
   const [loading, setLoading] = useState(false);
   const [metrics, setMetrics] = useState(null);
 
-  // Fallback data based on Raffy's evaluation measures
+  // Fallback data matching Rafly's AllocationEvaluation record
   const mockMetrics = {
-    groupsKeptTogether: 95,
-    splitGroups: 2,
-    isolatedSeats: 4,
-    executionTimeMs: 1250,
-    totalAllocated: 298
+    groupCount: 30,
+    splitGroupCount: 2,
+    percentageGroupsTogether: 95.0,
+    isolatedSeatCount: 4,
+    duplicateAllocationCount: 0
   };
 
   const fetchMetrics = async () => {
     setLoading(true);
     try {
-      // Assuming Raffy names the endpoint /metrics
-      const data = await request(`/events/${eventId}/metrics`);
+      // Matches Rafly's @GetMapping("/api/organiser/events/{id}/allocation/metrics")
+      const data = await request(`/organiser/events/${eventId}/allocation/metrics`);
       setMetrics(data);
     } catch (err) {
-      console.warn("Metrics API not ready, using mock data for demo");
-      setMetrics(mockMetrics); // Fallback for the demo
+      console.warn("Metrics API not ready, using mock data");
+      setMetrics(mockMetrics); 
     } finally {
       setLoading(false);
     }
@@ -30,18 +30,27 @@ export function AllocationMetrics({ eventId }) {
 
   const handleExport = async () => {
     try {
-      // In the future: const csvData = await request(`/events/${eventId}/export`);
-      // For now, generate a fake CSV to show the UI works
-      const csvContent = "data:text/csv;charset=utf-8,BookingRef,Seat,R1-S1,R1-S2\nDemo1,A1,A2";
-      const encodedUri = encodeURI(csvContent);
+      // Matches Rafly's @GetMapping("/api/organiser/events/{id}/allocation/export")
+      const csvData = await request(`/organiser/events/${eventId}/allocation/export`);
+      
+      // Create a blob and download it
+      const blob = new Blob([csvData], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
+      link.href = url;
       link.setAttribute("download", `anonymous_seating_${eventId}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } catch (err) {
-      alert("Export failed: " + err.message);
+      console.warn("Export API not ready, using mock CSV");
+      const csvContent = "data:text/csv;charset=utf-8,BookingRef,Seat\nDemo1,A1";
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `mock_seating_${eventId}.csv`);
+      document.body.appendChild(link);
+      link.click();
     }
   };
 
@@ -60,11 +69,11 @@ export function AllocationMetrics({ eventId }) {
       <h3 style={{ marginTop: 0 }}>Allocation Metrics</h3>
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px', fontSize: '14px' }}>
-        <div><strong>Total Allocated:</strong> {metrics.totalAllocated}</div>
-        <div><strong>Execution Time:</strong> {metrics.executionTimeMs}ms</div>
-        <div><strong>Groups Kept Together:</strong> {metrics.groupsKeptTogether}%</div>
-        <div><strong>Split Groups:</strong> {metrics.splitGroups}</div>
-        <div><strong>Isolated Seats:</strong> {metrics.isolatedSeats}</div>
+        <div><strong>Groups Evaluated:</strong> {metrics.groupCount}</div>
+        <div><strong>Groups Kept Together:</strong> {metrics.percentageGroupsTogether}%</div>
+        <div><strong>Split Groups:</strong> {metrics.splitGroupCount}</div>
+        <div><strong>Isolated Seats:</strong> {metrics.isolatedSeatCount}</div>
+        <div><strong>Duplicates:</strong> {metrics.duplicateAllocationCount}</div>
       </div>
 
       <button 
