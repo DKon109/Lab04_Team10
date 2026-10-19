@@ -58,11 +58,22 @@ export function VenuePicker({ value, onSelect }) {
   const [realRooms, setRealRooms] = useState(MOCK_ROOMS); 
   
   useEffect(() => {
-    // UPDATED: Matches Rafly's @GetMapping("/api/organiser/seating-profiles")
+    // Matches Rafly's @GetMapping("/api/organiser/seating-profiles")
     request('/organiser/seating-profiles')
       .then((data) => {
         if (data && data.length > 0) {
-          setRealRooms(data);
+          // Map Rafly's CampusProfile fields to the frontend format
+          const mappedRooms = data.map(room => ({
+            id: room.id,
+            name: room.name,
+            building: room.notice || 'Campus Room', // Using notice as building description
+            capacity: room.rows * room.seatsPerRow,
+            rows: room.rows,
+            seatsPerRow: room.seatsPerRow,
+            hasNumberedSeats: true, // Default to true unless specified
+            shape: room.template ? room.template.toLowerCase() : 'front'
+          }));
+          setRealRooms(mappedRooms);
         }
       })
       .catch((err) => {
