@@ -5,6 +5,9 @@ import com.ooaf.eventticketing.entity.*;
 import com.ooaf.eventticketing.repository.*;
 import com.ooaf.eventticketing.service.*;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import com.ooaf.eventticketing.allocation.AllocationStrategy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -23,6 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test") @Transactional
 class SeatingIntegrationTest {
@@ -76,6 +80,136 @@ class SeatingIntegrationTest {
     }
     void publish() { eventService.changeEventStatus(eventId, "published", ownerEmail); }
     void close() { eventService.changeEventStatus(eventId, "closed", ownerEmail); }
+
+    @Test void metricsArePersistedPrivateAndUpdatedAfterAnOrganiserMove() throws Exception {
+        saveAllocationMap(List.of(
+                allocationRow("row-a", List.of(allocationSeat("A1", "A", 0, 1, false),
+                        allocationSeat("A2", "A", 0, 2, false))),
+                allocationRow("row-b", List.of(allocationSeat("B1", "B", 1, 1, false),
+                        allocationSeat("B2", "B", 1, 2, false)))));
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        assertEquals(409, assertThrows(ResponseStatusException.class,
+                () -> seating.metrics(eventId, ownerEmail)).getStatusCode().value());
+        close(); seating.allocate(eventId, ownerEmail);
+        entityManager.flush(); entityManager.clear();
+        var run = runs.findById(eventId).orElseThrow();
+        assertEquals(100.0, run.getPercentageGroupsTogether());
+        assertEquals(100.0, run.getAverageGroupContiguityPercentage());
+        assertEquals(0.0, run.getAverageSplitDistance());
+        assertEquals(0, run.getIsolatedSeatCount());
+        assertEquals(0, run.getDuplicateAllocationCount());
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        mvc.perform(get("/api/organiser/events/{id}/allocation/metrics", eventId)
+                .header("Authorization", "Bearer " + tokens.issueToken(owner).token()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.percentageGroupsTogether").value(100.0))
+                .andExpect(jsonPath("$.duplicateAllocationCount").value(0))
+                .andExpect(jsonPath("$.averageGroupContiguityPercentage").value(100.0));
+        mvc.perform(get("/api/organiser/events/{id}/allocation/metrics", eventId))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/organiser/events/{id}/allocation/metrics", eventId)
+                .header("Authorization", "Bearer " + tokens.issueToken(users.findByEmail(studentEmail).orElseThrow()).token()))
+                .andExpect(status().isForbidden());
+        var outsider = users.saveAndFlush(new User("other-" + eventId + "@test.local", "unused", UserRole.COMMITTEE_MEMBER, "Other"));
+        mvc.perform(get("/api/organiser/events/{id}/allocation/metrics", eventId)
+                .header("Authorization", "Bearer " + tokens.issueToken(outsider).token()))
+                .andExpect(status().isForbidden());
+        managedSeating.assignByOrganiser(eventId, second.id(), ownerEmail, new SeatAssignmentRequest("B1"));
+        entityManager.flush(); entityManager.clear();
+        run = runs.findById(eventId).orElseThrow();
+        assertEquals(0.0, run.getPercentageGroupsTogether());
+        assertEquals(2.5, run.getAverageSplitDistance()); // weighted row + element boundary
+        assertEquals(0.0, run.getAverageGroupContiguityPercentage());
+        assertEquals(2, run.getIsolatedSeatCount());
+        assertEquals(1, run.getSplitGroupCount());
+        assertEquals(run.getPercentageGroupsTogether(), seating.metrics(eventId, ownerEmail).percentageGroupsTogether());
+        assertNotNull(seating.ticket(first.id(), studentEmail).splitReason());
+    }
+
+    @Test void generalAdmissionMetricsDoNotClaimContiguousSeating() {
+        seating.configure(eventId, ownerEmail, layout(false, List.of())); publish();
+        book(studentEmail, false, null, false); close();
+        var run = seating.allocate(eventId, ownerEmail);
+        assertNull(run.getPercentageGroupsTogether());
+        assertNull(run.getAverageGroupContiguityPercentage());
+        assertNull(run.getIsolatedSeatCount());
+        assertNull(seating.metrics(eventId, ownerEmail).averageSplitDistance());
+        assertEquals(0, run.getDuplicateAllocationCount());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"DEFAULT,B1", "PREFER_SAME_ROW,A6", "OMITTED,B1"})
+    void allocationStrategyControlsPlacementAndCannotChangeAfterCompletion(String requested, String expected) throws Exception {
+        saveAllocationMap(List.of(
+                allocationRow("row-a", List.of(allocationSeat("A1", "A", 0, 1, false),
+                        allocationSeat("A6", "A", 0, 6, false))),
+                allocationRow("row-b", List.of(allocationSeat("B1", "B", 1, 1, false)))));
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        managedSeating.chooseSeat(first.id(), studentEmail, new SeatAssignmentRequest("A1"));
+        close();
+        String token = tokens.issueToken(users.findByEmail(ownerEmail).orElseThrow()).token();
+        var request = post("/api/organiser/events/{id}/allocate", eventId).header("Authorization", "Bearer " + token);
+        String selected = requested.equals("OMITTED") ? "DEFAULT" : requested;
+        if (!requested.equals("OMITTED")) request.param("strategy", requested);
+        mvc.perform(request).andExpect(status().isOk()).andExpect(jsonPath("$.strategy").value(selected));
+        entityManager.flush(); entityManager.clear();
+        var run = runs.findById(eventId).orElseThrow();
+        assertEquals(AllocationStrategy.valueOf(selected), run.getStrategy());
+        assertEquals("A1", seating.ticket(first.id(), studentEmail).seatCode());
+        assertEquals(expected, seating.ticket(second.id(), friendEmail).seatCode());
+        assertEquals(run.getCompletedAt(), seating.allocate(eventId, ownerEmail).getCompletedAt());
+        mvc.perform(post("/api/organiser/events/{id}/allocate", eventId).param("strategy", selected)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.strategy").value(selected));
+        mvc.perform(post("/api/organiser/events/{id}/allocate", eventId)
+                .param("strategy", selected.equals("DEFAULT") ? "PREFER_SAME_ROW" : "DEFAULT")
+                .header("Authorization", "Bearer " + token)).andExpect(status().isConflict());
+        entityManager.flush(); entityManager.clear();
+        assertEquals(expected, seating.ticket(second.id(), friendEmail).seatCode());
+        assertEquals(run.getCompletedAt(), runs.findById(eventId).orElseThrow().getCompletedAt());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"DEFAULT,6,80", "PREFER_SAME_ROW,6,80", "DEFAULT,5,75", "PREFER_SAME_ROW,5,75"})
+    void persistsBalancedRowSubgroupsAndContiguity(AllocationStrategy strategy, int count, double contiguity) {
+        var rows = new ArrayList<SeatMapRequest.ElementRequest>();
+        for (int row = 0; row < 2; row++) {
+            String label = String.valueOf((char) ('A' + row));
+            var seats = new ArrayList<SeatMapRequest.SeatRequest>();
+            for (int number = 1; number <= 4; number++) seats.add(allocationSeat(label + number, label, row, number, false));
+            rows.add(allocationRow("row-" + label, seats));
+        }
+        saveAllocationMap(rows);
+        String groupCode = null;
+        for (int i = 0; i < count; i++) {
+            var user = users.saveAndFlush(new User("balanced-" + eventId + "-" + i + "@test.local", "unused", UserRole.STUDENT));
+            var booking = book(user.getEmail(), i == 0, groupCode, false);
+            groupCode = booking.groupCode();
+        }
+        close(); seating.allocate(eventId, ownerEmail, strategy);
+        entityManager.flush(); entityManager.clear();
+        var stored = bookings.findByEventIdOrderByCreatedAtAsc(eventId);
+        var sizes = stored.stream().collect(java.util.stream.Collectors.groupingBy(
+                b -> b.getSeatCode().substring(0, 1), java.util.stream.Collectors.counting())).values().stream().sorted().toList();
+        assertEquals(count == 6 ? List.of(3L, 3L) : List.of(2L, 3L), sizes);
+        var run = runs.findById(eventId).orElseThrow();
+        assertEquals(strategy, run.getStrategy());
+        assertEquals(1, run.getSplitGroupCount());
+        assertEquals(contiguity, run.getAverageGroupContiguityPercentage());
+        assertEquals(contiguity, seating.metrics(eventId, ownerEmail).averageGroupContiguityPercentage());
+        assertEquals(count, stored.stream().map(Booking::getSeatCode).distinct().count());
+    }
+
+    @Test void invalidStrategyCannotCreateAnAllocation() throws Exception {
+        seating.configure(eventId, ownerEmail, layout(true, List.of())); publish();
+        var booking = book(studentEmail, false, null, false); close();
+        mvc.perform(post("/api/organiser/events/{id}/allocate", eventId).param("strategy", "UNKNOWN")
+                .header("Authorization", "Bearer " + tokens.issueToken(users.findByEmail(ownerEmail).orElseThrow()).token()))
+                .andExpect(status().isBadRequest());
+        assertFalse(runs.existsById(eventId));
+        assertEquals(BookingStatus.PENDING_ALLOCATION, bookings.findById(booking.id()).orElseThrow().getStatus());
+    }
 
     @Test void fullLifecyclePersistsPrivateTicketsAndAnonymousExport() throws Exception {
         var config = seating.configure(eventId, ownerEmail, layout(true, List.of("A1")));
@@ -389,6 +523,167 @@ class SeatingIntegrationTest {
         assertEquals("A2", seating.ticket(second.id(), friendEmail).seatCode());
         assertNull(seating.ticket(first.id(), studentEmail).splitReason());
         assertNull(seating.ticket(second.id(), friendEmail).splitReason());
+    }
+
+    SeatMapRequest.ElementRequest table(String key, SeatingElementType type) {
+        var seats = new ArrayList<SeatMapRequest.SeatRequest>();
+        for (int side = 0; side < 2; side++) for (int number = 1; number <= 8; number++) {
+            String row = side == 0 ? "N" : "S";
+            seats.add(allocationSeat(key + "-" + row + number, row, side, number, false));
+        }
+        return new SeatMapRequest.ElementRequest(key, type, key, null, 0, 0, 0, 0, false, seats);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = SeatingElementType.class,
+            names = {"ROUND_TABLE", "SQUARE_TABLE", "RECTANGULAR_TABLE"})
+    void sameTableWarningsAndPersistedMetricsFollowOrganiserMoves(SeatingElementType type) {
+        saveAllocationMap(List.of(table("T1", type), table("T2", type)));
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        managedSeating.chooseSeat(first.id(), studentEmail, new SeatAssignmentRequest("T1-N1"));
+        managedSeating.chooseSeat(second.id(), friendEmail, new SeatAssignmentRequest("T1-S1"));
+        close(); seating.allocate(eventId, ownerEmail);
+        entityManager.flush(); entityManager.clear();
+        assertEquals(type, managedSeating.organiserMap(eventId, ownerEmail).elements().get(0).type());
+        var run = runs.findById(eventId).orElseThrow();
+        assertEquals(0, run.getSplitGroupCount());
+        assertEquals(100.0, run.getPercentageGroupsTogether());
+        assertEquals(0.0, run.getAverageGroupContiguityPercentage());
+        assertNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNull(seating.ticket(second.id(), friendEmail).splitReason());
+
+        managedSeating.assignByOrganiser(eventId, second.id(), ownerEmail, new SeatAssignmentRequest("T2-S1"));
+        entityManager.flush(); entityManager.clear();
+        run = runs.findById(eventId).orElseThrow();
+        assertEquals(1, run.getSplitGroupCount());
+        assertEquals(0.0, run.getPercentageGroupsTogether());
+        assertNotNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNotNull(seating.ticket(second.id(), friendEmail).splitReason());
+        assertEquals(run.getPercentageGroupsTogether(), seating.metrics(eventId, ownerEmail).percentageGroupsTogether());
+
+        managedSeating.assignByOrganiser(eventId, second.id(), ownerEmail, new SeatAssignmentRequest("T1-S1"));
+        entityManager.flush(); entityManager.clear();
+        assertEquals(0, runs.findById(eventId).orElseThrow().getSplitGroupCount());
+        assertEquals(100.0, seating.metrics(eventId, ownerEmail).percentageGroupsTogether());
+        assertNull(seating.ticket(second.id(), friendEmail).splitReason());
+    }
+
+    @Test void pendingMembersJoinAPreassignedTableAfterPersistenceReload() {
+        saveAllocationMap(List.of(table("T1", SeatingElementType.RECTANGULAR_TABLE),
+                table("T2", SeatingElementType.RECTANGULAR_TABLE)));
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        managedSeating.chooseSeat(first.id(), studentEmail, new SeatAssignmentRequest("T2-N1"));
+        close(); entityManager.flush(); entityManager.clear();
+        seating.allocate(eventId, ownerEmail);
+        entityManager.flush(); entityManager.clear();
+        assertEquals("T2-N1", seating.ticket(first.id(), studentEmail).seatCode());
+        assertEquals("T2-N2", seating.ticket(second.id(), friendEmail).seatCode());
+        assertEquals(100.0, runs.findById(eventId).orElseThrow().getPercentageGroupsTogether());
+    }
+
+    @Test void rectangularTablesCanBeSavedThroughTheExistingMapApi() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        mvc.perform(put("/api/organiser/events/{id}/seat-map", eventId)
+                .header("Authorization", "Bearer " + tokens.issueToken(owner).token())
+                .contentType(MediaType.APPLICATION_JSON).content("""
+                {"name":"Banquet", "attendeesChooseSeats":true,"autoMatchTicketCapacities":true,
+                 "identifiersConfirmed":true,"ticketTypeCapacities":{"STANDARD":0},"elements":[
+                 {"key":"T1","type":"RECTANGULAR_TABLE","label":"Table 1",
+                  "positionX":0,"positionY":0,"rotationDegrees":0,"displayOrder":0,"privateElement":false,"seats":[
+                  {"code":"T1-N1","label":"N1","section":"Main","rowLabel":"N","rowIndex":0,
+                   "seatNumber":1,"positionX":0,"positionY":0,"accessible":false,"blocked":false,
+                   "privateSeat":false,"ticketTypes":["STANDARD"]},
+                  {"code":"T1-S1","label":"S1","section":"Main","rowLabel":"S","rowIndex":1,
+                   "seatNumber":1,"positionX":0,"positionY":0,"accessible":false,"blocked":false,
+                   "privateSeat":false,"ticketTypes":["STANDARD"]}]}]}
+                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.elements[0].type").value("RECTANGULAR_TABLE"))
+                .andExpect(jsonPath("$.elements[0].seats.length()").value(2));
+    }
+
+    SeatMapRequest.SeatRequest allocationSeat(String code, String row, int rowIndex, int number, boolean accessible) {
+        return new SeatMapRequest.SeatRequest(code, code, null, "Main", row, rowIndex, number,
+                number * 10, rowIndex * 20, accessible, false, false, List.of("STANDARD"));
+    }
+
+    SeatMapRequest.ElementRequest allocationRow(String key, List<SeatMapRequest.SeatRequest> seats) {
+        return new SeatMapRequest.ElementRequest(key, SeatingElementType.ROW, key, null,
+                0, 0, 0, 0, false, seats);
+    }
+
+    void saveAllocationMap(List<SeatMapRequest.ElementRequest> elements) {
+        managedSeating.saveMap(eventId, ownerEmail, new SeatMapRequest("Allocation regression", true, true,
+                true, Map.of("STANDARD", 0), elements));
+        publish();
+    }
+
+    @Test void separateElementsDoNotBeatAnAvailableContiguousRow() {
+        saveAllocationMap(List.of(
+                allocationRow("left", List.of(allocationSeat("A1", "A", 0, 1, false))),
+                allocationRow("right", List.of(allocationSeat("A2", "A", 0, 2, false))),
+                allocationRow("row-b", List.of(allocationSeat("B1", "B", 1, 1, false),
+                        allocationSeat("B2", "B", 1, 2, false)))));
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(0, run.getSplitGroupCount());
+        assertEquals(Set.of("B1", "B2"), Set.of(seating.ticket(first.id(), studentEmail).seatCode(),
+                seating.ticket(second.id(), friendEmail).seatCode()));
+        assertNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNull(seating.ticket(second.id(), friendEmail).splitReason());
+    }
+
+    @Test void pendingMemberIsSeatedBesidePreassignedMemberAtEndOfRow() {
+        saveAllocationMap(List.of(allocationRow("row-a", List.of(
+                allocationSeat("A1", "A", 0, 1, false), allocationSeat("A2", "A", 0, 2, false),
+                allocationSeat("A3", "A", 0, 3, false), allocationSeat("A4", "A", 0, 4, false)))));
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        managedSeating.chooseSeat(first.id(), studentEmail, new SeatAssignmentRequest("A4"));
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(0, run.getSplitGroupCount());
+        entityManager.flush(); entityManager.clear();
+        assertEquals("A4", seating.ticket(first.id(), studentEmail).seatCode());
+        assertEquals("A3", seating.ticket(second.id(), friendEmail).seatCode());
+        assertNull(seating.ticket(first.id(), studentEmail).splitReason());
+        assertNull(seating.ticket(second.id(), friendEmail).splitReason());
+        assertFalse(seating.export(eventId, ownerEmail).contains("Group seats are not contiguous"));
+    }
+
+    @Test void pendingMemberFillsGapBetweenMultiplePreassignedGroupMembers() {
+        saveAllocationMap(List.of(allocationRow("row-a", List.of(
+                allocationSeat("A1", "A", 0, 1, false), allocationSeat("A2", "A", 0, 2, false),
+                allocationSeat("A3", "A", 0, 3, false), allocationSeat("A4", "A", 0, 4, false)))));
+        var third = users.saveAndFlush(new User("third-" + eventId + "@test.local", "unused", UserRole.STUDENT));
+        var firstBooking = book(studentEmail, true, null, false);
+        var secondBooking = book(friendEmail, false, firstBooking.groupCode(), false);
+        var thirdBooking = book(third.getEmail(), false, firstBooking.groupCode(), false);
+        managedSeating.chooseSeat(firstBooking.id(), studentEmail, new SeatAssignmentRequest("A4"));
+        managedSeating.chooseSeat(secondBooking.id(), friendEmail, new SeatAssignmentRequest("A2"));
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(0, run.getSplitGroupCount());
+        assertEquals("A4", seating.ticket(firstBooking.id(), studentEmail).seatCode());
+        assertEquals("A2", seating.ticket(secondBooking.id(), friendEmail).seatCode());
+        assertEquals("A3", seating.ticket(thirdBooking.id(), third.getEmail()).seatCode());
+    }
+
+    @Test void completingPreassignedGroupReservesAccessibilityForOtherBookings() {
+        saveAllocationMap(List.of(allocationRow("row-a", List.of(
+                allocationSeat("A1", "A", 0, 1, true), allocationSeat("A2", "A", 0, 2, false),
+                allocationSeat("A3", "A", 0, 3, false)))));
+        var third = users.saveAndFlush(new User("accessible-" + eventId + "@test.local", "unused", UserRole.STUDENT));
+        var firstBooking = book(studentEmail, true, null, false);
+        var secondBooking = book(friendEmail, false, firstBooking.groupCode(), false);
+        var accessibleBooking = book(third.getEmail(), false, null, true);
+        managedSeating.chooseSeat(firstBooking.id(), studentEmail, new SeatAssignmentRequest("A2"));
+        close(); var run = seating.allocate(eventId, ownerEmail);
+        assertEquals(0, run.getSplitGroupCount());
+        assertEquals("A2", seating.ticket(firstBooking.id(), studentEmail).seatCode());
+        assertEquals("A3", seating.ticket(secondBooking.id(), friendEmail).seatCode());
+        assertEquals("A1", seating.ticket(accessibleBooking.id(), third.getEmail()).seatCode());
     }
 
     @Test void persistsThreeHundredUniqueSeatsWithinTenSeconds() {
