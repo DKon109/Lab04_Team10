@@ -80,4 +80,34 @@ class CampusVenueTemplateServiceTest {
                         || code.startsWith("Q")));
     }
 
+    @Test
+    void assumedAccessibleSeatsAreLabelledAndRemainUnconfirmed() {
+        var template = service.listTemplates().stream()
+                .filter(item -> "usyd-seymour-everest".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        var accessbleSeats = template.map().elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .filter(SeatMapRequest.SeatRequest::accessible)
+                .toList();
+
+        Set<String> accessibleCodes = accessbleSeats.stream()
+                .map(SeatMapRequest.SeatRequest::code)
+                .collect(Collectors.toSet());
+
+        assertEquals(Set.of("A12", "A26"), accessibleCodes);
+
+        for (var seat : accessbleSeats) {
+            assertEquals(
+                    "Assumed accessible position for coursework demonstration; not venue-verified.",
+                    seat.note()
+            );
+        }
+
+        assertEquals(Boolean.FALSE,
+                template.map().identifiersConfirmed());
+        assertFalse(template.map().attendeesChooseSeats());
+    }
+
 }

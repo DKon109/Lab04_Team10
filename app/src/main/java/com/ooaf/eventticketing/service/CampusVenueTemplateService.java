@@ -81,8 +81,8 @@ public class CampusVenueTemplateService {
     private List<SeatMapRequest.ElementRequest> createEverestRows() {
         var elements = new ArrayList<SeatMapRequest.ElementRequest>();
 
-        // Accessible seat identifiers have not yet been verified.
-        Set<String> accessibleCodes = Set.of();
+        // Assumed accessible positions for coursework demonstration only.
+        Set<String> accessibleCodes = Set.of("A12", "A26");
 
         for (int index = 0; index < EVEREST_ROWS.size(); index++) {
             EverestRow row = EVEREST_ROWS.get(index);
@@ -143,10 +143,14 @@ public class CampusVenueTemplateService {
     ){
         String code = rowLabel + seatNumber;
 
+        String note = accessible
+                ? "Assumed accessible position for coursework demonstration; not venue-verified."
+                :null;
+
         return new SeatMapRequest.SeatRequest(
                 code,
                 code,
-                null,
+                note,
                 section,
                 rowLabel,
                 rowIndex,
