@@ -1,6 +1,6 @@
 # Event and Venue Backend Handoff
 
-Last updated: 19 October 2026
+Last updated: 21 October 2026
 
 ## Responsibilities
 
@@ -151,6 +151,34 @@ It does not verify application restart or physical seating layouts.
   Fan/semicircle and central-stage generation in the common managed
   map format remain outside this scope.
 
+## Registration closure and mock checkout
+
+- Closing an event through the event status service also sets
+  registration to CLOSED.
+- Event closure and mock checkout acquire a database write lock
+  on the same event, serialising these operations.
+- If closure commits first, a new successful checkout request is
+  rejected with HTTP 409 and "Registration is closed for this event".
+  No booking or checkout attempt is created.
+- If checkout commits first, closure preserves the successful
+  booking and its checkout record. The booking remains
+  PENDING_ALLOCATION until seat allocation.
+- Retrying a successful checkout after closure with the same
+  idempotency key and unchanged request returns the existing result
+  without creating another booking or checkout record.
+- PENDING_ALLOCATION means a confirmed booking awaiting allocation,
+  not a payment awaiting confirmation.
+- The current mock checkout creates a booking on SUCCESS.
+  These tests do not cover a real payment provider or asynchronous
+  payment callbacks.
+
+Regression coverage:
+
+- RegistrationClosureConcurrencyTest covers both transaction orders.
+- MockCheckoutControllerTest covers successful retries after closure.
+- These tests and BookingControllerTest passed together:
+  27 tests, no failures or errors, on 21 October 2026.
+
 ## Pending coordination
 
 - Verify the Everest Theatre physical layout and accessible seat
@@ -161,3 +189,7 @@ It does not verify application restart or physical seating layouts.
   and schema compatibility with Sathish.
 - Verify the complete organiser and attendee workflows once the
   template selection interface is integrated.
+- Confirm with Sathish that the documented closure and retry
+    behaviour matches the agreed mock-payment rules.
+- Verify Aadi's create/edit/preview/publish/close workflow against
+  the backend, including display of server validation errors.
