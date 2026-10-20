@@ -80,8 +80,11 @@ It does not verify application restart or physical seating layouts.
   the `COMMITTEE_MEMBER` role.
 - The response is an array containing `id`, `name`, `sourceUrl`
   and `map`.
-- The initial template is `usyd-seymour-everest`:
-  Seymour Centre - Everest Theatre, with 505 unique seat codes.
+- Available templates:
+  - `usyd-seymour-everest`: Seymour Centre - Everest Theatre,
+    with 505 unique seat codes.
+  - `usyd-seymour-reginald`: Seymour Centre - Reginald Theatre,
+    with 148 unique seat codes.
 - `sourceUrl` identifies the official seating plan used for the
   seat numbering. Display coordinates are schematic, not measured
   room dimensions.
@@ -91,8 +94,9 @@ It does not verify application restart or physical seating layouts.
 - The template starts with `identifiersConfirmed: false` and
   `attendeesChooseSeats: false`. Do not automatically change these
   flags when selecting or saving the template.
-- A12 and A26 are assumed accessible positions for coursework
-  demonstration only, not verified wheelchair spaces.
+- In the Everest template, A12 and A26 are assumed accessible
+  positions for coursework demonstration only, not verified
+  wheelchair spaces.
   Both have `accessible: true` and a note stating this assumption.
 - Other seats retain `accessible: false`; this is not a verified
   assessment of their accessibility.
@@ -102,6 +106,26 @@ It does not verify application restart or physical seating layouts.
   before treating the template as a confirmed seating layout.
 - Tests cover seat count, unique codes, missing seats and rows,
   organiser-only access, and database reload after saving.
+
+### Reginald layout details
+
+- Seat numbering follows the official Reginald seating plan:
+  rows A-H contain seats 1-16, and row J contains seats 1-20.
+  There is no row I.
+- Rows A-H are split between seats 8 and 9 to preserve the central
+  aisle. Row J remains a single continuous block.
+  The template contains 17 row elements and 148 seats.
+- Left, Right and Rear are application section names, not official
+  venue section labels. Display coordinates are schematic.
+- All seats currently have `accessible: false`; accessibility has
+  not been verified. This does not mean the venue is inaccessible.
+- `identifiersConfirmed` remains false after saving. Template
+  selection must not imply physical verification.
+- Tests verify API retrieval and preservation of seat codes,
+  sections, rows, coordinates and accessibility flags after a
+  persistence-context reload within the same transaction.
+- SeatingIntegrationTest and CampusVenueTemplateServiceTest passed
+  together: 61 tests, no failures or errors, on 21 October 2026.
 
 ## Front-stage external template API
 
