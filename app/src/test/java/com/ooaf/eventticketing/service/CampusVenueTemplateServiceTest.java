@@ -110,4 +110,96 @@ class CampusVenueTemplateServiceTest {
         assertFalse(template.map().attendeesChooseSeats());
     }
 
+    @Test
+    void reginaldTemplateContainsExpected148UniqueSeats() {
+        var template = service.listTemplates().stream()
+                .filter(item -> "usyd-seymour-reginald".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        var seats = template.map().elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .toList();
+
+        Set<String> actualCodes = seats.stream()
+                .map(SeatMapRequest.SeatRequest::code)
+                .collect(Collectors.toSet());
+
+        var expectedCodes = new java.util.HashSet<String>();
+
+        // Row A to H each contain seats 1 to 16.
+        for (char row = 'A'; row <= 'H'; row++) {
+            for (int number = 1;  number <= 16; number++) {
+                expectedCodes.add("" + row + number);
+            }
+        }
+
+        // The rear row is J, with seats 1 to 20; there is no row I.
+        for (int number = 1; number <= 20; number++) {
+            expectedCodes.add("J" + number);
+        }
+
+        assertEquals(148, seats.size());
+        assertEquals(148, actualCodes.size());
+        assertEquals(expectedCodes, actualCodes);
+        assertEquals(
+                Integer.valueOf(148),
+                template.map().ticketTypeCapacities().get("STANDARD")
+        );
+        assertEquals(
+                Boolean.FALSE,
+                template.map().identifiersConfirmed()
+        );
+    }
+
+    @Test
+    void reginaldTemplatePreservesCentralAisleAndRearRow() {
+        var template = service.listTemplates().stream()
+                .filter(item -> "usyd-seymour-reginald".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        var elements = template.map().elements();
+        assertEquals(17, elements.size());
+
+        for (char row = 'A'; row <= 'H'; row++) {
+            String rowLabel = String.valueOf(row);
+
+            var blocks = elements.stream()
+                    .filter(element -> element.seats().stream()
+                            .anyMatch(seat -> rowLabel.equals(seat.rowLabel())))
+                    .toList();
+
+            assertEquals(2, blocks.size());
+
+            var left = blocks.stream()
+                    .filter(block -> block.seats().stream()
+                            .allMatch(seat -> "Left".equals(seat.section())))
+                    .findFirst().orElseThrow();
+
+            var right = blocks.stream()
+                    .filter(block -> block.seats().stream()
+                            .allMatch(seat -> "Right".equals(seat.section())))
+                    .findFirst().orElseThrow();
+
+            assertEquals(8, left.seats().size());
+            assertEquals(8, right.seats().size());
+            assertTrue(left.seats().stream().allMatch(
+                    seat -> seat.seatNumber() >= 1
+                    && seat.seatNumber() <= 8));
+            assertTrue(right.seats().stream().allMatch(seat -> seat.seatNumber() >= 9
+            && seat.seatNumber() <= 16));
+        }
+
+        var rearBlocks = elements.stream()
+                .filter(element -> element.seats().stream().anyMatch(seat ->
+                        "J".equals(seat.rowLabel())))
+                .toList();
+
+        assertEquals(1, rearBlocks.size());
+        assertEquals(20, rearBlocks.get(0).seats().size());
+        assertTrue(rearBlocks.get(0).seats().stream()
+                .allMatch(seat -> "Rear".equals(seat.section())));
+    }
+
 }

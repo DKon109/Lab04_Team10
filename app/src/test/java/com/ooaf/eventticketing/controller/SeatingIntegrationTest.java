@@ -1192,4 +1192,82 @@ class SeatingIntegrationTest {
         assertEquals(1, savedBookings.size());
         assertEquals(first.id(), savedBookings.get(0).getId());
     }
+
+    @Test
+    void campusTemplateApiIncludesReginald() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+
+        String reginald =
+                "$[?(@.id == 'usyd-seymour-reginald')]";
+
+        mvc.perform(get("/api/organiser/venue-templates")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(reginald,
+                        org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath(reginald + ".name",
+                        org.hamcrest.Matchers.contains(
+                                "Seymour Centre - Reginald Theatre")))
+                .andExpect(jsonPath(reginald + ".sourceUrl",
+                        org.hamcrest.Matchers.contains(
+                                "https://www.seymourcentre.com/media/"
+                                        + "3rjab23b/reginald-seating-plan.pdf")))
+                .andExpect(jsonPath(
+                        reginald + ".map.ticketTypeCapacities.STANDARD",
+                        org.hamcrest.Matchers.contains(148)))
+                .andExpect(jsonPath(
+                        reginald + ".map.identifiersConfirmed",
+                        org.hamcrest.Matchers.contains(false)));
+    }
+
+    @Test
+    void reginaldTemplatePreservesLayoutAfterReload() throws Exception {
+        var template = campusTemplates.listTemplates().stream()
+                .filter(item -> "usyd-seymour-reginald".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        managedSeating.saveMap(eventId, ownerEmail, template.map());
+
+        // Flush changes and reload entities from the database.
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = managedSeating.organiserMap(eventId, ownerEmail);
+
+        assertEquals(template.name(), reloaded.name());
+        assertEquals(148L, reloaded.totalSeats());
+        assertEquals(148L, reloaded.publicCapacity());
+        assertEquals(17, reloaded.elements().size());
+
+        for (var expectedElement : template.map().elements()) {
+            var actualElement = reloaded.elements().stream()
+                    .filter(element -> expectedElement.key().equals(element.key()))
+                    .findFirst()
+                    .orElseThrow();
+
+            assertEquals(expectedElement.type(), actualElement.type());
+            assertEquals(expectedElement.seats().size(), actualElement.seats().size());
+
+            for (var expectedSeat : expectedElement.seats()) {
+                var actualSeat = actualElement.seats().stream()
+                        .filter(seat -> expectedSeat.code().equals(seat.code()))
+                        .findFirst()
+                        .orElseThrow();
+
+                assertEquals(expectedSeat.section(), actualSeat.section());
+                assertEquals(expectedSeat.rowLabel(), actualSeat.rowLabel());
+                assertEquals(expectedSeat.rowIndex(), actualSeat.rowIndex());
+                assertEquals(expectedSeat.seatNumber(), actualSeat.seatNumber());
+                assertEquals(expectedSeat.positionX(), actualSeat.positionX());
+                assertEquals(expectedSeat.positionY(), actualSeat.positionY());
+                assertEquals(expectedSeat.accessible(), actualSeat.accessible());
+            }
+        }
+
+        var savedEvent = events.findById(eventId).orElseThrow();
+        assertEquals(Integer.valueOf(148), savedEvent.getCapacity());
+        assertFalse(savedEvent.isSeatIdentifiersConfirmed());
+    }
 }

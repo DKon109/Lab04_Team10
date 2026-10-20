@@ -23,6 +23,19 @@ public class CampusVenueTemplateService {
             "https://www.seymourcentre.com/media/probtcxn/"
                     + "everest-seating-plan-final.pdf";
 
+    private static final String REGINALD_ID =
+            "usyd-seymour-reginald";
+
+    private static final String REGINALD_NAME =
+            "Seymour Centre - Reginald Theatre";
+
+    private static final String REGINALD_SOURCE_URL =
+            "https://www.seymourcentre.com/media/3rjab23b/"
+                    + "reginald-seating-plan.pdf";
+
+    private static final List<String> REGINALD_ROWS =
+            List.of("A", "B", "C", "D", "E", "F", "G", "H", "J");
+
     private record EverestRow(
             String label,
             int rightFirst,
@@ -55,27 +68,47 @@ public class CampusVenueTemplateService {
     );
 
     public List<CampusVenueTemplateResponse> listTemplates() {
-        List<SeatMapRequest.ElementRequest> elements = createEverestRows();
-
-        int capacity = elements.stream()
+        var eventElements = createEverestRows();
+        int everestCapacity = eventElements.stream()
                 .mapToInt(element -> element.seats().size())
                 .sum();
 
-        SeatMapRequest map = new SeatMapRequest(
+        var everestMap = new SeatMapRequest(
                 EVEREST_NAME,
                 false,
                 true,
                 false,
-                Map.of("STANDARD", capacity),
-                elements
+                Map.of("STANDARD", everestCapacity),
+                eventElements
+        );
+
+        var reginaldElements = createReginaldRows();
+        int reginaldCapacity = reginaldElements.stream()
+                .mapToInt(element -> element.seats().size())
+                .sum();
+
+        var reginaldMap = new SeatMapRequest(
+                REGINALD_NAME,
+                false,
+                true,
+                false,
+                Map.of("STANDARD", reginaldCapacity),
+                reginaldElements
         );
 
         return List.of(new CampusVenueTemplateResponse(
                 EVEREST_ID,
                 EVEREST_NAME,
                 EVEREST_SOURCE_URL,
-                map
-        ));
+                everestMap
+        ),
+                new CampusVenueTemplateResponse(
+                        REGINALD_ID,
+                        REGINALD_NAME,
+                        REGINALD_SOURCE_URL,
+                        reginaldMap
+                )
+        );
     }
 
     private List<SeatMapRequest.ElementRequest> createEverestRows() {
@@ -203,5 +236,77 @@ public class CampusVenueTemplateService {
                 false,
                 List.copyOf(seats)
         );
+    }
+
+    private SeatMapRequest.ElementRequest createReginaldRowBlock(
+            String section,
+            String rowLabel,
+            int rowIndex,
+            int firstSeat,
+            int lastSeat,
+            double firstSeatX,
+            double positionY
+    ) {
+        var seats = new ArrayList<SeatMapRequest.SeatRequest>();
+
+        for (int number = firstSeat; number <= lastSeat; number++){
+            double positionX = firstSeatX + (number - firstSeat) * 20.0;
+
+            seats.add(createSeat(
+                    section,
+                    rowLabel,
+                    rowIndex,
+                    number,
+                    positionX,
+                    positionY,
+                    false
+            ));
+        }
+
+        return new SeatMapRequest.ElementRequest(
+                "reginald-" + section + "-" + rowLabel + "-" + firstSeat,
+                SeatingElementType.ROW,
+                rowLabel + " - " + section,
+                "Schematic coordinates based on the published seating plan; "
+                + "physical accessibility is not verified.",
+                firstSeatX,
+                positionY,
+                0,
+                rowIndex,
+                false,
+                List.copyOf(seats)
+        );
+    }
+
+    private List<SeatMapRequest.ElementRequest> createReginaldRows() {
+        var elements = new ArrayList<SeatMapRequest.ElementRequest>();
+
+        for (int index = 0; index < REGINALD_ROWS.size(); index++) {
+            String rowLabel = REGINALD_ROWS.get(index);
+            double positionY = index * 40.0;
+
+            if ("J".equals(rowLabel)) {
+                // The published plan shows a continuous rear row.
+                elements.add(createReginaldRowBlock(
+                        "Rear", rowLabel, index,
+                        1, 20,
+                        0.0, positionY
+                ));
+            } else {
+                // Separate row blocks preserve the central aisle.
+                elements.add(createReginaldRowBlock(
+                        "Left", rowLabel, index,
+                        1, 8,
+                        20.0, positionY
+                ));
+
+                elements.add(createReginaldRowBlock(
+                        "Right", rowLabel, index,
+                        9, 16,
+                        220.0, positionY
+                ));
+            }
+        }
+        return List.copyOf(elements);
     }
 }
