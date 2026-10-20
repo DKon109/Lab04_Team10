@@ -1128,4 +1128,68 @@ class SeatingIntegrationTest {
 
         assertEquals(Boolean.FALSE, generated.identifiersConfirmed());
     }
+
+    @Test
+    void assignedSeatingEventCannotBePublishedWithoutLayout() {
+        var event = events.findById(eventId).orElseThrow();
+        event.setSeatIdentifiersConfirmed(true);
+        events.saveAndFlush(event);
+
+        var error = assertThrows(
+                ResponseStatusException.class,
+                () -> publish()
+        );
+
+        assertEquals(409, error.getStatusCode().value());
+        assertEquals("Save the seating layout before publishing an assigned-seating event",
+                error.getReason());
+
+        var unchanged = events.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.DRAFT, unchanged.getStatus());
+        assertEquals(
+                EventRegistrationStatus.OPEN,
+                unchanged.getRegistrationStatus()
+        );
+    }
+
+    @Test
+    void closingEventWithGeneratedLayoutRejectsNewBookings() {
+        var map = frontStageTemplates.generate(
+                new FrontStageTemplateRequest(
+                        "Registration closure demo",
+                        1, 4, 2,
+                        List.of(),
+                        List.of()
+                )
+        );
+
+        managedSeating.saveMap(eventId, ownerEmail, map);
+        publish();
+
+        var first = book(studentEmail, false, null, false);
+
+        close();
+
+        var closed = events.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.CLOSED, closed.getStatus());
+        assertEquals(
+                EventRegistrationStatus.CLOSED,
+                closed.getRegistrationStatus()
+        );
+
+        var error = assertThrows(
+                ResponseStatusException.class,
+                () -> book(friendEmail, false, null, false)
+        );
+
+        assertEquals(409, error.getStatusCode().value());
+        assertEquals(
+                "Registration is closed for this event",
+                error.getReason()
+        );
+
+        var savedBookings = bookings.findByEventIdOrderByCreatedAtAsc(eventId);
+        assertEquals(1, savedBookings.size());
+        assertEquals(first.id(), savedBookings.get(0).getId());
+    }
 }
