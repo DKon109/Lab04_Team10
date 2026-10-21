@@ -1270,4 +1270,79 @@ class SeatingIntegrationTest {
         assertEquals(Integer.valueOf(148), savedEvent.getCapacity());
         assertFalse(savedEvent.isSeatIdentifiersConfirmed());
     }
+
+    @Test
+    void yorkTemplatePreservesLayoutAfterReload() throws Exception {
+        var template = campusTemplates.listTemplates().stream()
+                .filter(item -> "usyd-seymour-york".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        managedSeating.saveMap(eventId, ownerEmail, template.map());
+
+        // Flush changes and reload entities from the database.
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = managedSeating.organiserMap(eventId, ownerEmail);
+
+        assertEquals(template.name(), reloaded.name());
+        assertEquals(781L, reloaded.totalSeats());
+        assertEquals(781L, reloaded.publicCapacity());
+        assertEquals(60, reloaded.elements().size());
+
+        for (var expectedElement : template.map().elements()) {
+            var actualElement = reloaded.elements().stream()
+                    .filter(element -> expectedElement.key().equals(element.key()))
+                    .findFirst()
+                    .orElseThrow();
+
+            assertEquals(expectedElement.type(), actualElement.type());
+            assertEquals(expectedElement.seats().size(), actualElement.seats().size());
+
+            for (var expectedSeat : expectedElement.seats()) {
+                var actualSeat = actualElement.seats().stream()
+                        .filter(seat -> expectedSeat.code().equals(seat.code()))
+                        .findFirst()
+                        .orElseThrow();
+
+                assertEquals(expectedSeat.section(), actualSeat.section());
+                assertEquals(expectedSeat.rowLabel(), actualSeat.rowLabel());
+                assertEquals(expectedSeat.rowIndex(), actualSeat.rowIndex());
+                assertEquals(expectedSeat.seatNumber(), actualSeat.seatNumber());
+                assertEquals(expectedSeat.positionX(), actualSeat.positionX());
+                assertEquals(expectedSeat.positionY(), actualSeat.positionY());
+                assertEquals(expectedSeat.accessible(), actualSeat.accessible());
+            }
+        }
+
+        var savedEvent = events.findById(eventId).orElseThrow();
+        assertEquals(Integer.valueOf(781), savedEvent.getCapacity());
+        assertFalse(savedEvent.isSeatIdentifiersConfirmed());
+    }
+
+    @Test
+    void campusTemplateApiIncludesYork() throws Exception {
+        var owner =  users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+
+        String york = "$[?(@.id == 'usyd-seymour-york')]";
+
+        mvc.perform(get("/api/organiser/venue-templates")
+                .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(york,
+                        org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath(york + ".name",
+                        org.hamcrest.Matchers.contains(
+                                "Seymour Centre - York Theatre")))
+                .andExpect(jsonPath(york + ".sourceUrl",
+                        org.hamcrest.Matchers.contains(
+                                "https://www.seymourcentre.com/media/"
+                                + "vyfjqbae/york-theatre-seating-plan.pdf")))
+                .andExpect(jsonPath(york + ".map.ticketTypeCapacities.STANDARD",
+                        org.hamcrest.Matchers.contains(781)))
+                .andExpect(jsonPath(york + ".map.identifiersConfirmed",
+                        org.hamcrest.Matchers.contains(false)));
+    }
 }
