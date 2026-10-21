@@ -202,4 +202,59 @@ class CampusVenueTemplateServiceTest {
                 .allMatch(seat -> "Rear".equals(seat.section())));
     }
 
+    @Test
+    void yorkTemplatePreservesSeatCodesAndRowBlocks() {
+        var template = service.listTemplates().stream()
+                .filter(item -> "usyd-seymour-york".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        var elements = template.map().elements();
+        var seats = elements.stream()
+                .flatMap(element -> element.seats().stream())
+                .toList();
+
+        Set<String> codes = seats.stream()
+                .map(SeatMapRequest.SeatRequest::code)
+                .collect(Collectors.toSet());
+
+        Set<String> rows = seats.stream()
+                .map(SeatMapRequest.SeatRequest::rowLabel)
+                .collect(Collectors.toSet());
+
+        assertEquals(60, elements.size());
+        assertEquals(seats.size(), codes.size());
+        assertEquals(
+                Set.of("A", "B", "C", "D", "E", "F",
+                        "G", "H", "J", "K", "L", "M"),
+                rows
+        );
+
+        for (String row : rows) {
+            long blockCount = elements.stream()
+                    .filter(element -> element.seats().stream()
+                            .anyMatch(seat -> row.equals(seat.rowLabel())))
+                    .count();
+            assertEquals(5L, blockCount);
+        }
+
+        // Check row-specific boundaries from the seating plan.
+        assertTrue(codes.contains("A63"));
+        assertFalse(codes.contains("A64"));
+        assertTrue(codes.contains("C66"));
+        assertFalse(codes.contains("C67"));
+        assertTrue(codes.contains("D67"));
+        assertFalse(codes.contains("D68"));
+        assertTrue(codes.contains("K88"));
+        assertFalse(codes.contains("K89"));
+        assertTrue(codes.contains("L89"));
+        assertTrue(codes.contains("M89"));
+        assertEquals(781, seats.size());
+
+        assertEquals(
+                Integer.valueOf(seats.size()),
+                template.map().ticketTypeCapacities().get("STANDARD")
+        );
+        assertEquals(Boolean.FALSE, template.map().identifiersConfirmed());
+    }
 }

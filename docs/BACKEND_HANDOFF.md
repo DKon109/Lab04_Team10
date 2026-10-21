@@ -85,6 +85,8 @@ It does not verify application restart or physical seating layouts.
     with 505 unique seat codes.
   - `usyd-seymour-reginald`: Seymour Centre - Reginald Theatre,
     with 148 unique seat codes.
+  - `usyd-seymour-york`: Seymour Centre - York Theatre,
+    with 781 unique seat codes.
 - `sourceUrl` identifies the official seating plan used for the
   seat numbering. Display coordinates are schematic, not measured
   room dimensions.
@@ -126,6 +128,31 @@ It does not verify application restart or physical seating layouts.
   persistence-context reload within the same transaction.
 - SeatingIntegrationTest and CampusVenueTemplateServiceTest passed
   together: 61 tests, no failures or errors, on 21 October 2026.
+
+### York layout details
+
+- The template contains 781 seats across 12 rows:
+  A-H and J-M. There is no row I.
+- Each row contains five separate blocks, producing 60 row elements.
+  Seat-number ranges vary by row; gaps must not be filled automatically.
+- Block1-Block5 are application section names, not official venue labels.
+  Blocks preserve aisle separation, but display coordinates do not
+  reproduce the theatre's angles, dimensions or surrounding-stage shape.
+- Row-specific boundaries include A63, C66, D67 and K88.
+  A64, C67, D68 and K89 are absent; L89 and M89 are present.
+- All seats currently have `accessible: false`; accessibility remains
+  unverified. This is not a determination that the venue is inaccessible.
+- `identifiersConfirmed` remains false after saving.
+  Catalogue availability does not imply physical verification.
+- Tests cover unique seat codes, row/block structure, API retrieval,
+  and preservation of seat properties after a persistence-context
+  reload within the same transaction.
+
+### Latest catalogue regression results
+
+- SeatingIntegrationTest: 58 passed.
+- CampusVenueTemplateServiceTest: 6 passed.
+- Total: 64 tests, no failures or errors, on 21 October 2026.
 
 ## Front-stage external template API
 
