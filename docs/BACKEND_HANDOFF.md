@@ -1,6 +1,6 @@
 # Event and Venue Backend Handoff
 
-Last updated: 21 October 2026
+Last updated: 23 October 2026
 
 ## Responsibilities
 
@@ -201,6 +201,33 @@ It does not verify application restart or physical seating layouts.
 - This implements the front-stage subset of SCRUM-49.
   Fan/semicircle and central-stage generation in the common managed
   map format remain outside this scope.
+
+## External venue template families
+
+- `POST /api/organiser/venue-templates/external` requires the
+  `COMMITTEE_MEMBER` role.
+- Uses the same request fields as `/front-stage`, with an additional
+  `template` field: `FRONT`, `FAN` or `CENTRAL`.
+- FRONT preserves the existing front-stage layout.
+- FAN arranges rows in schematic arcs and preserves aisle separation.
+- CENTRAL places rows on the North and South sides of the stage.
+  It requires at least two rows; an odd extra row goes to the North.
+- All formats return the existing `SeatMapRequest` representation.
+  Generation does not save data. Save the response through
+  `PUT /api/organiser/events/{eventId}/seat-map`.
+- Seat codes, row information, sections, blocked seats and accessibility
+  flags are preserved. Coordinates are schematic.
+- Generated maps retain `identifiersConfirmed: false`.
+  Accessibility flags are organiser-provided, not physically verified.
+- Tests cover organiser-only access, invalid requests, database reload
+  within one transaction, and accessible group allocation without
+  crossing an aisle.
+- Related regression tests passed on 23 October 2026:
+  SeatingIntegrationTest (68), ExternalVenueTemplateServiceTest (5),
+  FrontStageTemplateServiceTest (4), CampusVenueTemplateServiceTest (6).
+  Total: 83 tests, no failures or errors.
+- Frontend preview and template-selection integration still require
+  coordination with Aadi; these backend tests do not verify the UI.
 
 ## Registration closure and mock checkout
 
