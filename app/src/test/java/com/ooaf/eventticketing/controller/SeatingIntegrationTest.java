@@ -44,6 +44,7 @@ class SeatingIntegrationTest {
     @Autowired EntityManager entityManager;
     @Autowired CampusVenueTemplateService campusTemplates;
     @Autowired FrontStageTemplateService frontStageTemplates;
+    @Autowired ExternalVenueTemplateService externalTemplates;
     Long eventId; String ownerEmail, studentEmail, friendEmail; User student, friend;
     @BeforeEach void seed() {
         String suffix = UUID.randomUUID().toString();
@@ -1344,5 +1345,233 @@ class SeatingIntegrationTest {
                         org.hamcrest.Matchers.contains(781)))
                 .andExpect(jsonPath(york + ".map.identifiersConfirmed",
                         org.hamcrest.Matchers.contains(false)));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "FRONT, Left",
+            "FAN, Left",
+            "CENTRAL, North-Left"
+    })
+    void externalTemplatesCanBeGeneratedOnlyByOrganisers(
+            String template, String expectedSection
+    ) throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+        String studentToken = tokens.issueToken(student).token();
+
+        String body = """
+                {
+                "name": "External API demo",
+                "template": "%s",
+                "rows": 2,
+                "seatsPerRow": 6,
+                "aisleAfter": 3,
+                "blockedCodes": ["B6"],
+                "accessibleCodes": ["A1"]
+                }
+                """.formatted(template);
+
+        String endpoint = "/api/organiser/venue-templates/external";
+
+        mvc.perform(post(endpoint)
+                .header("Authorization", "Bearer " + ownerToken)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("External API demo"))
+
+                .andExpect(jsonPath("$.ticketTypeCapacities.STANDARD").value(11))
+
+                .andExpect(jsonPath("$.identifiersConfirmed").value(false))
+                .andExpect(jsonPath("$.elements.length()").value(4))
+
+                .andExpect(jsonPath("$.elements[0].seats[0].code").value("A1"))
+                .andExpect(jsonPath("$.elements[0].seats[0].section")
+                        .value(expectedSection))
+
+                .andExpect(jsonPath("$.elements[0].seats[0].accessible")
+                        .value(true))
+
+                .andExpect(jsonPath("$.elements[3].seats[2].code").value("B6"))
+                .andExpect(jsonPath("$.elements[3].seats[2].blocked")
+                        .value(true));
+
+        mvc.perform(post(endpoint)
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(post(endpoint)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void externalTemplateApiRejectsInvalidRequest() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+
+        String validBody = """
+                {
+                    "name": "External validation demo",
+                    "template": "FAN",
+                    "rows": 2,
+                    "seatsPerRow": 6,
+                    "aisleAfter": 3,
+                    "blockedCodes": ["B6"],
+                    "accessibleCodes": ["A1"]
+                    }
+        """;
+
+        var invalidBodies = List.of(
+                validBody.replace("\"FAN\"", "\"UNKNOWN\""),
+                validBody.replace("\"FAN\"", "null"),
+                validBody.replace("\"rows\": 2", "\"rows\": 0"),
+                validBody.replace("\"seatsPerRow\": 6",
+                        "\"seatsPerRow\": 21"
+                ),
+                validBody.replace("\"aisleAfter\": 3", "\"aisleAfter\": 6"),
+                validBody.replace("[\"B6\"]", "[\"B7\"]"),
+                validBody.replace("[\"A1\"]", "[\"A1\", \"A1\"]"),
+                validBody.replace("[\"A1\"]", "[\"B6\"]"),
+                validBody.replace(
+                        "\"External validation demo\"", "\"\""
+                ),
+                validBody.replace("\"FAN\"", "\"CENTRAL\"")
+                        .replace("\"rows\": 2", "\"rows\": 1")
+                        .replace("[\"B6\"]", "[]")
+        );
+                for (int i = 0; i < invalidBodies.size(); i++) {
+                    mvc.perform(post("/api/organiser/venue-templates/external")
+                            .header("Authorization", "Bearer " + ownerToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(invalidBodies.get(i)))
+                            .andExpect(status().isBadRequest());
+                }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"FRONT", "FAN", "CENTRAL"})
+    void externalTemplatesCanBeSavedAndReloaded(
+            String template
+    ) {
+        var request = new ExternalVenueTemplateRequest(
+                "Persisted external demo",
+                SeatingLayoutRequest.Template.valueOf(template),
+                3, 4, 2,
+                List.of("C4"),
+                List.of("A1")
+        );
+
+        var generated = externalTemplates.generate(request);
+        managedSeating.saveMap(eventId, ownerEmail, generated);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = managedSeating.organiserMap(eventId, ownerEmail);
+
+        assertEquals(generated.name(), reloaded.name());
+        assertEquals(12L, reloaded.totalSeats());
+        assertEquals(11L, reloaded.publicCapacity());
+        assertEquals(6, reloaded.elements().size());
+
+        var actualSeats = reloaded.elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .toList();
+
+        assertEquals(12L, actualSeats.stream()
+                .map(seat -> seat.code()).distinct().count());
+
+        for (var element : generated.elements()) {
+            for (var expected : element.seats()) {
+                var actual = actualSeats.stream()
+                        .filter(seat -> seat.code().equals(expected.code()))
+                        .findFirst().orElseThrow();
+
+                assertEquals(expected.section(), actual.section());
+                assertEquals(expected.rowLabel(), actual.rowLabel());
+                assertEquals(expected.rowIndex(), actual.rowIndex());
+                assertEquals(expected.seatNumber(), actual.seatNumber());
+                assertEquals(expected.positionX(), actual.positionX(), 0.000001);
+                assertEquals(expected.positionY(), actual.positionY(), 0.000001);
+                assertEquals(expected.accessible(), actual.accessible());
+
+                if (expected.blocked()) {
+                    assertEquals(
+                            SeatingMapManagementService.SeatStatus.BLOCKED,
+                            actual.status()
+                    );
+                } else {
+                    assertNotEquals(
+                            SeatingMapManagementService.SeatStatus.BLOCKED,
+                            actual.status()
+                    );
+                }
+            }
+        }
+
+        var savedEvent = events.findById(eventId).orElseThrow();
+        assertEquals(Integer.valueOf(11), savedEvent.getCapacity());
+        assertFalse(savedEvent.isSeatIdentifiersConfirmed());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"FRONT", "FAN", "CENTRAL"})
+    void externalTemplateAllocationPreservesAccessibilityAndAisle(
+            String template
+    ) {
+        var generated = externalTemplates.generate(
+                new ExternalVenueTemplateRequest(
+                        "External allocation demo",
+
+                        SeatingLayoutRequest.Template.valueOf(template),
+                        2, 4, 2,
+                        List.of("B4"),
+                        List.of("A1")
+                )
+        );
+
+                // Confirm identifiers only for this synthetic test fixture.
+        var confirmedMap = new SeatMapRequest(
+                generated.name(),
+                generated.attendeesChooseSeats(),
+                generated.autoMatchTicketCapacities(),
+                true,
+                generated.ticketTypeCapacities(),
+                generated.elements()
+        );
+        managedSeating.saveMap(eventId, ownerEmail, confirmedMap);
+        publish();
+
+        var first = book(studentEmail, true, null, true);
+        var second = book(friendEmail, false, first.groupCode(), false
+        );
+
+        close();
+        seating.allocate(eventId, ownerEmail);
+
+        var firstTicket = seating.ticket(first.id(), studentEmail);
+        var secondTicket = seating.ticket(second.id(), friendEmail);
+
+        assertEquals(
+                BookingStatus.ALLOCATED,
+                firstTicket.booking().status()
+        );
+        assertEquals(
+                BookingStatus.ALLOCATED,
+                secondTicket.booking().status()
+        );
+        // A1 is the only accessible seat; A2 is its adjacent companion.
+        assertEquals("A1", firstTicket.seatCode());
+        assertEquals("A2", secondTicket.seatCode());
+        assertNotEquals(firstTicket.seatCode(), secondTicket.seatCode());
+
+        assertNotEquals("B4", firstTicket.seatCode());
+        assertNotEquals("B4", secondTicket.seatCode());
+
+        assertEquals(Boolean.FALSE, generated.identifiersConfirmed());
     }
 }
