@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TopNav } from '../components/layout/TopNav';
 import { createEvent } from '../api/eventsApi';
+import { request } from '../api/apiClient'; // Added for the new API calls
 import { formatEventDate } from '../utils/format';
 import { VenuePicker } from '../components/VenuePicker';
 import './EventCreationWizard.css';
@@ -99,8 +100,10 @@ export function EventCreationWizard() {
       return;
     }
 
+    // --- THE NEW PUBLISH FLOW ---
     setSubmitting(true);
     try {
+      // 1. Create the event (Returns a DRAFT)
       const created = await createEvent({
         title: draft.title.trim(),
         category: draft.category.trim(),
@@ -113,17 +116,44 @@ export function EventCreationWizard() {
         imageUrl: draft.imageUrl.trim() || null,
         description: draft.description.trim() || null,
         tags: draft.tags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean),
-        seatingMode: draft.seatingMode,
-        venueLayout: draft.venueLayout,
       });
-      navigate(`/events/${created.id}`, {
-        state: { justPublished: true },
+
+      const eventId = created.id;
+
+      // 2. Save the Seating Layout (Ryoji's API)
+      const layout = draft.venueLayout;
+      await request(`/organiser/events/${eventId}/seating`, {
+        method: 'PUT',
+        body: {
+          source: layout.mode === 'external' ? 'EXTERNAL' : 'CAMPUS_DEMO',
+          roomId: layout.mode === 'usyd' ? layout.roomId : null,
+          template: layout.mode === 'external' ? layout.shape.toUpperCase() : null,
+          rows: layout.rows,
+          seatsPerRow: layout.seatsPerRow,
+          aisleAfter: 0,
+          blockedCodes: [],
+          accessibleCodes: [],
+          identifiersConfirmed: draft.seatingMode === 'general-admission' 
+            ? false 
+            : (layout.hasNumberedSeats ? true : draft.unnumberedConfirmed),
+        }
       });
+
+      // 3. Publish the Event
+      await request(`/events/${eventId}/status`, {
+        method: 'PATCH',
+        body: { status: 'published' }
+      });
+
+      // 4. Only navigate after everything succeeds
+      navigate(`/organiser/dashboard`, { state: { justPublished: true } });
+
     } catch (error) {
+      console.error("Failed to publish:", error);
       setErrors(error.fieldErrors || {});
       setBanner({
         type: 'error',
-        text: error.message || 'Could not publish the event. Please try again.',
+        text: error.message || 'Could not publish the event. Please check the details and try again.',
       });
     } finally {
       setSubmitting(false);

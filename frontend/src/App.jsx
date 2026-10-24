@@ -8,6 +8,11 @@ import { OrganiserDashboard } from './pages/OrganiserDashboard';
 import { EventCreationWizard } from './pages/EventCreationWizard';
 import { TicketAndSeatMapView } from './pages/TicketAndSeatMapView';
 
+// --- REAL FILES FROM YOUR SCREENSHOT ---
+import BookingPage from './pages/BookingPage';
+import  MyBookingsPage  from './pages/MyBookingsPage';
+import  EventSeatingPage  from './pages/EventSeatingPage';
+
 export default function App() {
   return (
     <AuthProvider>
@@ -15,13 +20,21 @@ export default function App() {
         <Routes>
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/events" element={<ProtectedRoute><EventsPage /></ProtectedRoute>} />
+          
+          {/* RESTORED ATTENDEE ROUTES */}
+          <Route path="/events/:eventId/book" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
+          <Route path="/bookings" element={<ProtectedRoute><MyBookingsPage /></ProtectedRoute>} />
+          <Route path="/bookings/:bookingId/ticket" element={<ProtectedRoute><TicketAndSeatMapView /></ProtectedRoute>} />
+          
+          {/* ORGANISER ROUTES */}
           <Route path="/organiser" element={<ProtectedRoute role="COMMITTEE_MEMBER"><OrganiserPage /></ProtectedRoute>} />
           <Route path="/organiser/dashboard" element={<ProtectedRoute role="COMMITTEE_MEMBER"><OrganiserDashboard /></ProtectedRoute>} />
-          
-          {/* Consolidated single route */}
           <Route path="/organiser/new" element={<ProtectedRoute role="COMMITTEE_MEMBER"><EventCreationWizard /></ProtectedRoute>} />
           
-          <Route path="/ticket/:bookingId" element={<ProtectedRoute><TicketAndSeatMapView /></ProtectedRoute>} />
+          {/* RESTORED ORGANISER MANAGEMENT ROUTES (Pointing to EventSeatingPage) */}
+          <Route path="/organiser/events/:eventId" element={<ProtectedRoute role="COMMITTEE_MEMBER"><EventSeatingPage /></ProtectedRoute>} />
+          <Route path="/organiser/events/:eventId/edit" element={<ProtectedRoute role="COMMITTEE_MEMBER"><EventSeatingPage /></ProtectedRoute>} />
+
           <Route path="*" element={<Navigate to="/events" replace />} />
         </Routes>
       </BrowserRouter>

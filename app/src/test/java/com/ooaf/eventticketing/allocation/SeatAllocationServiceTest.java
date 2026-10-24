@@ -1,6 +1,8 @@
 package com.ooaf.eventticketing.allocation;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -158,6 +160,174 @@ class SeatAllocationServiceTest {
         assertEquals(300, result.assignments().size());
         assertEquals(300, result.assignments().stream().map(SeatAssignment::seatId).distinct().count());
         org.junit.jupiter.api.Assertions.assertTrue(elapsedMs < 10_000, "Allocation must finish within 10 seconds on the test machine");
+    }
+
+    @Test
+    void choosesExactFitInsteadOfLeavingAnIsolatedSeat() {
+        var seats = new ArrayList<>(row("A", 0, 1, 3));
+        seats.add(seat(4L, "B", 1, 1, false, false));
+        seats.add(seat(5L, "B", 1, 2, false, false));
+        var bookings = List.of(booking(1L, "PAIR", false), booking(2L, "PAIR", false));
+        var result = service.allocate(bookings, seats);
+        assertEquals(List.of(4L, 5L), result.assignments().stream().map(SeatAssignment::seatId).toList());
+        assertEquals(0, AllocationTopology.isolatedSeats(seats, java.util.Set.of(4L, 5L)));
+        Collections.reverse(seats);
+        assertEquals(result, service.allocate(bookings, seats));
+    }
+
+    @Test
+    void rejectsDuplicateOrInaccessibleFixedAssignments() {
+        var seats = row("A", 0, 1, 3);
+        assertThrows(AllocationException.class, () -> service.allocate(List.of(
+                new AllocationBooking(1L, "PAIR", false, 1L),
+                new AllocationBooking(2L, "PAIR", false, 1L)), seats));
+        assertThrows(AllocationException.class, () -> service.allocate(List.of(
+                new AllocationBooking(1L, null, true, 1L)), seats));
+    }
+
+    @Test
+    void splitPlacementPrefersSameRowOverLowerDistanceAcrossRows() {
+        var result = service.allocate(List.of(new AllocationBooking(1L, "PAIR", false, 1L),
+                        booking(2L, "PAIR", false)),
+                List.of(seat(1L, "A", 0, 1, false, false), seat(2L, "A", 0, 6, false, false),
+                        seat(3L, "B", 1, 1, false, false)), AllocationStrategy.PREFER_SAME_ROW);
+        assertEquals(2L, result.assignments().stream().filter(a -> a.bookingId() == 2L).findFirst().orElseThrow().seatId());
+        assertEquals(1, result.splits().size()); // Same row is insufficient when there is a gap.
+    }
+
+    @Test
+    void splitPlacementPrefersTwoContiguousBlocksOverThreeFragments() {
+        var seats = List.of(seat(1L, "A", 0, 1, false, false), seat(2L, "A", 0, 2, false, false),
+                seat(3L, "A", 0, 4, false, false), seat(4L, "B", 1, 1, false, false),
+                seat(5L, "B", 1, 2, false, false), seat(6L, "B", 1, 4, false, false));
+        var bookings = new ArrayList<AllocationBooking>();
+        for (long i = 1; i <= 4; i++) bookings.add(booking(i, "FOUR", false));
+        var result = service.allocate(bookings, seats);
+        assertEquals(List.of(1L, 2L, 4L, 5L), result.assignments().stream().map(SeatAssignment::seatId).sorted().toList());
+        assertEquals(1, result.splits().size());
+        Collections.reverse(bookings);
+        var reversedSeats = new ArrayList<>(seats); Collections.reverse(reversedSeats);
+        assertEquals(result, service.allocate(bookings, reversedSeats));
+    }
+
+    @Test
+    void splitPlacementUsesWeightedDistanceAfterRowAndBlockCounts() {
+        var result = service.allocate(List.of(new AllocationBooking(1L, "PAIR", false, 1L),
+                        booking(2L, "PAIR", false)),
+                List.of(seat(1L, "A", 0, 1, false, false), seat(2L, "B", 1, 4, false, false),
+                        seat(3L, "C", 2, 1, false, false)));
+        assertEquals(3L, result.assignments().stream().filter(a -> a.bookingId() == 2L).findFirst().orElseThrow().seatId());
+    }
+
+    @Test
+    void defaultAndSameRowStrategiesMakeDifferentChoicesButStayDeterministic() {
+        var bookings = new ArrayList<>(List.of(new AllocationBooking(1L, "PAIR", false, 1L),
+                booking(2L, "PAIR", false), booking(3L, null, true)));
+        var seats = new ArrayList<>(List.of(seat(1L, "A", 0, 1, false, false),
+                seat(2L, "A", 0, 6, false, false), seat(3L, "B", 1, 1, false, false),
+                seat(4L, "C", 2, 1, true, false)));
+        for (var strategy : AllocationStrategy.values()) {
+            var result = service.allocate(bookings, seats, strategy);
+            assertEquals(strategy == AllocationStrategy.DEFAULT ? 3L : 2L,
+                    result.assignments().stream().filter(a -> a.bookingId() == 2L).findFirst().orElseThrow().seatId());
+            assertEquals(1L, result.assignments().stream().filter(a -> a.bookingId() == 1L).findFirst().orElseThrow().seatId());
+            assertEquals(4L, result.assignments().stream().filter(a -> a.bookingId() == 3L).findFirst().orElseThrow().seatId());
+            Collections.reverse(bookings); Collections.reverse(seats);
+            assertEquals(result, service.allocate(bookings, seats, strategy));
+        }
+    }
+
+    @ParameterizedTest @EnumSource(AllocationStrategy.class)
+    void balancesEvenAndOddGroupsAcrossRows(AllocationStrategy strategy) {
+        var seats = rowsWithCapacities(4, 4);
+        for (int count : List.of(5, 6)) {
+            var result = service.allocate(groupOf(count), seats, strategy);
+            assertEquals(count == 6 ? List.of(3L, 3L) : List.of(2L, 3L), rowSizes(result, seats));
+            assertEquals(2, AllocationTopology.blockCount(result.assignments().stream()
+                    .map(a -> seats.stream().filter(s -> s.seatId().equals(a.seatId())).findFirst().orElseThrow()).toList()));
+        }
+    }
+
+    @Test void defaultTradesExtraRowsAgainstBalanceWhileSameRowKeepsTwoContiguousSubgroups() {
+        var seats = rowsWithCapacities(4, 2, 2);
+        assertEquals(List.of(2L, 2L, 2L), rowSizes(service.allocate(groupOf(6), seats, AllocationStrategy.DEFAULT), seats));
+        assertEquals(List.of(2L, 4L), rowSizes(service.allocate(groupOf(6), seats, AllocationStrategy.PREFER_SAME_ROW), seats));
+    }
+
+    @Test void sameRowStrategyUsesMoreRowsWhenThatAvoidsFragmentedSubgroups() {
+        var seats = new ArrayList<AllocationSeat>();
+        long id = 1;
+        for (int row = 0; row < 2; row++) for (int number : List.of(1, 2, 4)) {
+            seats.add(seat(id++, String.valueOf((char) ('A' + row)), row, number, false, false));
+        }
+        seats.add(seat(id++, "C", 2, 1, false, false));
+        seats.add(seat(id, "C", 2, 2, false, false));
+        var result = service.allocate(groupOf(6), seats, AllocationStrategy.PREFER_SAME_ROW);
+        assertEquals(List.of(2L, 2L, 2L), rowSizes(result, seats));
+    }
+
+    @ParameterizedTest @EnumSource(AllocationStrategy.class)
+    void unequalSplitsAreAllowedWhenCapacityOrFixedChoicesPreventEquality(AllocationStrategy strategy) {
+        var restricted = rowsWithCapacities(4, 1);
+        assertEquals(List.of(1L, 4L), rowSizes(service.allocate(groupOf(5), restricted, strategy), restricted));
+        var seats = rowsWithCapacities(4, 4);
+        var bookings = new ArrayList<AllocationBooking>();
+        for (long i = 1; i <= 6; i++) bookings.add(new AllocationBooking(i, "GROUP", false, i <= 4 ? i : null));
+        var result = service.allocate(bookings, seats, strategy);
+        assertEquals(List.of(2L, 4L), rowSizes(result, seats));
+        for (long i = 1; i <= 4; i++) {
+            long fixed = i;
+            assertEquals(fixed, result.assignments().stream().filter(a -> a.bookingId() == fixed).findFirst().orElseThrow().seatId());
+        }
+    }
+
+    @ParameterizedTest @EnumSource(AllocationStrategy.class)
+    void balancedSplitsPreserveAccessibleSeatsForOtherBookings(AllocationStrategy strategy) {
+        var seats = new ArrayList<>(rowsWithCapacities(4, 4, 1));
+        for (int i : List.of(4, 5, 8)) {
+            var seat = seats.get(i);
+            seats.set(i, new AllocationSeat(seat.seatId(), seat.section(), seat.rowLabel(), seat.rowIndex(),
+                    seat.seatNumber(), true, false));
+        }
+        var bookings = new ArrayList<AllocationBooking>();
+        for (long i = 1; i <= 6; i++) bookings.add(booking(i, "GROUP", i <= 2));
+        bookings.add(booking(7L, null, true));
+        var result = service.allocate(bookings, seats, strategy);
+        var groupResult = new AllocationResult(result.assignments().stream().filter(a -> a.groupCode() != null).toList(), result.splits());
+        assertEquals(List.of(3L, 3L), rowSizes(groupResult, seats));
+        assertEquals(9L, result.assignments().stream().filter(a -> a.bookingId() == 7L).findFirst().orElseThrow().seatId());
+        for (var assignment : result.assignments()) {
+            if (assignment.bookingId() <= 2 || assignment.bookingId() == 7) {
+                assertTrue(seats.stream().filter(s -> s.seatId().equals(assignment.seatId())).findFirst().orElseThrow().accessible());
+            }
+        }
+    }
+
+    @ParameterizedTest @EnumSource(AllocationStrategy.class)
+    void balancedPreferencesDoNotSplitAnAvailableWholeGroupBlock(AllocationStrategy strategy) {
+        var seats = rowsWithCapacities(6, 3, 3);
+        assertEquals(List.of(6L), rowSizes(service.allocate(groupOf(6), seats, strategy), seats));
+    }
+
+    private List<AllocationBooking> groupOf(int count) {
+        var bookings = new ArrayList<AllocationBooking>();
+        for (long i = 1; i <= count; i++) bookings.add(booking(i, "GROUP", false));
+        return bookings;
+    }
+
+    private List<AllocationSeat> rowsWithCapacities(int... capacities) {
+        var seats = new ArrayList<AllocationSeat>();
+        long id = 1;
+        for (int row = 0; row < capacities.length; row++) for (int number = 1; number <= capacities[row]; number++) {
+            seats.add(seat(id++, String.valueOf((char) ('A' + row)), row, number, false, false));
+        }
+        return seats;
+    }
+
+    private List<Long> rowSizes(AllocationResult result, List<AllocationSeat> seats) {
+        return result.assignments().stream().map(a -> seats.stream().filter(s -> s.seatId().equals(a.seatId())).findFirst().orElseThrow())
+                .collect(java.util.stream.Collectors.groupingBy(AllocationTopology::physicalRowKey, java.util.stream.Collectors.counting()))
+                .values().stream().sorted().toList();
     }
 
     private AllocationBooking booking(Long id, String groupCode, boolean accessibilityRequired) {
