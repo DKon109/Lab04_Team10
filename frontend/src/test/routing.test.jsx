@@ -3,13 +3,11 @@ import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import App from '../App';
 
-// 1. Mock AuthContext so ProtectedRoute doesn't redirect
 vi.mock('../context/AuthContext', () => ({
   AuthProvider: ({ children }) => <div>{children}</div>,
   useAuth: () => ({ user: { id: 1, role: 'COMMITTEE_MEMBER' }, initialising: false }),
 }));
 
-// 2. Mock BrowserRouter so it doesn't conflict with MemoryRouter in the test
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
@@ -18,11 +16,13 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-// 3. Mock ALL the page components so they render simple text instead of making real API calls
+// FIX: Use default export for the pages that are imported as default in App.jsx
 vi.mock('../pages/BookingPage', () => ({ default: () => <div>BookingPage</div> }));
-vi.mock('../pages/MyBookingsPage', () => ({ MyBookingsPage: () => <div>MyBookingsPage</div> }));
+vi.mock('../pages/MyBookingsPage', () => ({ default: () => <div>MyBookingsPage</div> }));
+vi.mock('../pages/EventSeatingPage', () => ({ default: () => <div>EventSeatingPage</div> }));
+
+// These are still named exports
 vi.mock('../pages/TicketAndSeatMapView', () => ({ TicketAndSeatMapView: () => <div>TicketView</div> }));
-vi.mock('../pages/EventSeatingPage', () => ({ EventSeatingPage: () => <div>EventSeatingPage</div> }));
 vi.mock('../pages/OrganiserDashboard', () => ({ OrganiserDashboard: () => <div>OrganiserDashboard</div> }));
 vi.mock('../pages/EventCreationWizard', () => ({ EventCreationWizard: () => <div>EventCreationWizard</div> }));
 vi.mock('../pages/EventsPage', () => ({ EventsPage: () => <div>EventsPage</div> }));

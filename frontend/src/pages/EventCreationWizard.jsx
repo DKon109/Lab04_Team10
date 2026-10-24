@@ -127,7 +127,7 @@ export function EventCreationWizard() {
         body: {
           source: layout.mode === 'external' ? 'EXTERNAL' : 'CAMPUS_DEMO',
           roomId: layout.mode === 'usyd' ? layout.roomId : null,
-          template: layout.mode === 'external' ? layout.shape.toUpperCase() : null,
+          template: layout.shape ? layout.shape.toUpperCase() : 'FRONT',
           rows: layout.rows,
           seatsPerRow: layout.seatsPerRow,
           aisleAfter: 0,
