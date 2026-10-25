@@ -136,4 +136,26 @@ class MockCheckoutControllerTest {
             pool.shutdownNow(); attempts.deleteAll(); bookings.deleteAll(); events.deleteAll(); authenticationTokens.deleteAllInBatch(); users.deleteAll();
         }
     }
+
+    @Test
+    void successfulCheckoutCanBeRetriedAfterRegistrationCloses() throws Exception {
+        var first = checkout(token, "success-before-close", "SUCCESS", "")
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        var event = events.findById(eventId).orElseThrow();
+        event.setStatus(EventStatus.CLOSED);
+        event.setRegistrationStatus(EventRegistrationStatus.CLOSED);
+        events.saveAndFlush(event);
+        entityManager.clear();
+
+        // A retry returns the existing booking without creating another one.
+        var retry = checkout(token, "success-before-close", "SUCCESS", "")
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertEquals(first, retry);
+        assertEquals(1, bookings.count());
+        assertEquals(1, attempts.count());
+    }
 }
