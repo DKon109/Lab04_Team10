@@ -18,11 +18,14 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.MediaType;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
+
 import jakarta.persistence.EntityManager;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test") @Transactional
@@ -39,6 +42,9 @@ class SeatingIntegrationTest {
     @Autowired TokenService tokens;
     @Autowired MockMvc mvc;
     @Autowired EntityManager entityManager;
+    @Autowired CampusVenueTemplateService campusTemplates;
+    @Autowired FrontStageTemplateService frontStageTemplates;
+    @Autowired ExternalVenueTemplateService externalTemplates;
     Long eventId; String ownerEmail, studentEmail, friendEmail; User student, friend;
     @BeforeEach void seed() {
         String suffix = UUID.randomUUID().toString();
@@ -383,6 +389,10 @@ class SeatingIntegrationTest {
         managedSeating.chooseSeat(otherBooking.id(), friendEmail, new SeatAssignmentRequest("A1"));
         close();
         seating.allocate(eventId, ownerEmail);
+
+        // Reload the managed map and ticket from the database.
+        entityManager.flush();
+        entityManager.clear();
 
         var ticket = seating.ticket(booking.id(), studentEmail);
         assertNull(ticket.layout());
@@ -750,5 +760,818 @@ class SeatingIntegrationTest {
         assertEquals(original.layout(), current.layout());
         assertEquals(original.event().getCapacity(),
                 current.event().getCapacity());
+    }
+
+    @Test
+    void anotherOrganiserCannotDeleteManagedMap() throws Exception {
+        var original = managedSeating.saveMap(
+                eventId, ownerEmail, managedMap(false)
+        );
+        Integer originalCapacity = events.findById(eventId).orElseThrow().getCapacity();
+
+        var otherOwner = users.saveAndFlush(new User(
+                "other-owner-" + UUID.randomUUID() + "@test.local",
+                "unused",
+                UserRole.COMMITTEE_MEMBER,
+                "Demo society"
+        ));
+        String token = tokens.issueToken(otherOwner).token();
+
+        mvc.perform(delete("/api/organiser/events/{id}/seat-map", eventId
+        ).header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+
+        //Reload to verify that the rejected request changed nothing.
+        entityManager.flush();
+        entityManager.clear();
+
+        assertEquals(
+                original,
+                managedSeating.organiserMap(eventId, ownerEmail)
+        );
+        var unchanged = events.findById(eventId).orElseThrow();
+        assertEquals(originalCapacity, unchanged.getCapacity());
+        assertTrue(unchanged.isSeatIdentifiersConfirmed());
+    }
+
+    @Test
+    void publishedManagedMapCannotBeReplacedOrDeleted() {
+        var original = managedSeating.saveMap(
+                eventId, ownerEmail, managedMap(false)
+        );
+        Integer originalCapacity = events.findById(eventId).orElseThrow().getCapacity();
+        publish();
+
+        var replacementError = assertThrows(
+                ResponseStatusException.class, () -> managedSeating.saveMap(
+                        eventId, ownerEmail, managedMap(true)
+                )
+        );
+        assertEquals(409, replacementError.getStatusCode().value());
+
+        var deletionError = assertThrows(
+                ResponseStatusException.class,
+                () -> managedSeating.deleteMap(eventId, ownerEmail)
+        );
+        assertEquals(409, deletionError.getStatusCode().value());
+
+        // Reload to verify that both rejected operations preserved the map.
+        entityManager.flush();
+        entityManager.clear();
+
+        assertEquals(
+                original,
+                managedSeating.organiserMap(eventId, ownerEmail)
+        );
+        var unchanged = events.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.PUBLISHED, unchanged.getStatus());
+        assertEquals(originalCapacity, unchanged.getCapacity());
+        assertTrue(unchanged.isSeatIdentifiersConfirmed());
+    }
+
+    @Test
+    void campusTemplatesAreAvailableOnlyToOrganisers() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+        String studentToken = tokens.issueToken(student).token();
+
+        mvc.perform(get("/api/organiser/venue-templates")
+                .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id")
+                        .value("usyd-seymour-everest"))
+                .andExpect(jsonPath("$[0].map.ticketTypeCapacities.STANDARD")
+                        .value(505))
+                .andExpect(jsonPath("$[0].map.identifiersConfirmed")
+                        .value(false));
+
+        mvc.perform(get("/api/organiser/venue-templates")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(get("/api/organiser/venue-templates"))
+                .andExpect(status().isUnauthorized());
+
+    }
+
+    @Test
+    void campusTemplateCanBeSavedAndReloadedWithoutConfirmingSeats() {
+        var template = campusTemplates.listTemplates().stream()
+                .filter(item -> "usyd-seymour-everest".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        managedSeating.saveMap(eventId, ownerEmail, template.map());
+
+        // Flush writes and reload from the database instead of the JPA cache.
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = managedSeating.organiserMap(eventId, ownerEmail);
+        assertEquals(template.name(), reloaded.name());
+        assertEquals(505L, reloaded.totalSeats());
+        assertEquals(505L, reloaded.publicCapacity());
+
+        Set<String> expectCodes = template.map().elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .map(SeatMapRequest.SeatRequest::code)
+                .collect(java.util.stream.Collectors.toSet());
+
+        Set<String> actualCodes = reloaded.elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .map(SeatingMapManagementService.SeatView::code)
+                .collect(java.util.stream.Collectors.toSet());
+
+        assertEquals(expectCodes, actualCodes);
+
+        var event = events.findById(eventId).orElseThrow();
+        assertEquals(Integer.valueOf(505), event.getCapacity());
+        assertFalse(event.isSeatIdentifiersConfirmed());
+    }
+
+    @Test
+    void everestDemoAllocatesAccessibleBookingsToAssumedPositions() {
+        var template = campusTemplates.listTemplates().stream()
+                .filter(item -> "usyd-seymour-everest".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        var source = template.map();
+
+        // Confirm only this synthetic test copy, not the real venue template.
+        var demoMap = new SeatMapRequest(
+                "Everest coursework demo - assumed accessibility",
+                false,
+                source.autoMatchTicketCapacities(),
+                true,
+                source.ticketTypeCapacities(),
+                source.elements()
+        );
+
+        managedSeating.saveMap(eventId, ownerEmail, demoMap);
+        publish();
+
+        var first = book(studentEmail, false, null, true);
+        var second = book(friendEmail, false, null, true);
+
+        close();
+        seating.allocate(eventId, ownerEmail);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        var firstTicket = seating.ticket(first.id(), studentEmail);
+        var secondTicket = seating.ticket(second.id(), friendEmail);
+
+        assertEquals(BookingStatus.ALLOCATED, firstTicket.booking().status());
+        assertEquals(BookingStatus.ALLOCATED, secondTicket.booking().status());
+        assertNotNull(firstTicket.seatCode());
+        assertNotNull(secondTicket.seatCode());
+        assertNotEquals(firstTicket.seatCode(), secondTicket.seatCode());
+
+        assertEquals(
+                Set.of("A12", "A26"),
+                Set.of(firstTicket.seatCode(), secondTicket.seatCode())
+        );
+
+        assertEquals(Boolean.FALSE, source.identifiersConfirmed());
+    }
+
+    @Test
+    void frontStageTemplateCanBeGeneratedOnlyByOrganisers() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+        String studentToken = tokens.issueToken(student).token();
+
+        String body = """
+                {
+                "name": "Front-stage API demo",
+                "rows": 2,
+                "seatsPerRow": 6,
+                "aisleAfter": 3,
+                "blockedCodes": ["B6"],
+                "accessibleCodes": ["A1"]
+                }
+                """;
+
+        String endpoint = "/api/organiser/venue-templates/front-stage";
+
+        mvc.perform(post(endpoint)
+                .header("Authorization", "Bearer " + ownerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Front-stage API demo"))
+
+                .andExpect(jsonPath("$.ticketTypeCapacities.STANDARD").value(11))
+                .andExpect(jsonPath("$.identifiersConfirmed").value(false))
+                .andExpect(jsonPath("$.elements.length()").value(4))
+                .andExpect(jsonPath("$.elements[0].seats[0].code").value("A1"))
+                .andExpect(jsonPath("$.elements[0].seats[0].accessible").value(true))
+                .andExpect(jsonPath("$.elements[3].seats[2].code").value("B6"))
+                .andExpect(jsonPath("$.elements[3].seats[2].blocked").value(true));
+
+        mvc.perform(post(endpoint)
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(post(endpoint)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void frontStageTemplateApiRejectsInvalidInput() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+
+        var invalidBodies = List.of(
+                """
+                        {
+                        "name": "Invalid dimensions",
+                        "rows": 0,
+                        "seatsPerRow": 6,
+                        "aisleAfter": 0,
+                        "blockedCodes": [],
+                        "accessibleCodes": []
+                        }
+                        """,
+                """
+                        {
+                        "name": "Invalid aisle",
+                        "rows": 2,
+                        "seatsPerRow": 6,
+                        "aisleAfter": 6,
+                        "blockedCodes": [],
+                        "accessibleCodes": []
+                        }
+                        """,
+                """
+                        {
+                        "name": "Unknown seat",
+                        "rows": 1,
+                        "seatsPerRow": 3,
+                        "aisleAfter": 0,
+                        "blockedCodes": ["A4"],
+                        "accessibleCodes": []
+                        }
+                        """
+        );
+
+        for (String body : invalidBodies) {
+            mvc.perform(post("/api/organiser/venue-templates/front-stage")
+                            .header("Authorization", "Bearer " + ownerToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
+    void frontStageTemplatesCanBeSavedAndReloaded() {
+        var request = new FrontStageTemplateRequest(
+                "Persisted front-stage demo",
+                2, 6, 3, List.of("B6"), List.of("A1")
+        );
+
+        var map = frontStageTemplates.generate(request);
+        managedSeating.saveMap(eventId, ownerEmail, map);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = managedSeating.organiserMap(eventId, ownerEmail);
+
+        assertEquals("Persisted front-stage demo", reloaded.name());
+        assertEquals(12L, reloaded.totalSeats());
+        assertEquals(11L, reloaded.publicCapacity());
+        assertEquals(4, reloaded.elements().size());
+
+        var seats = reloaded.elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .toList();
+
+        var accessibleSeat = seats.stream()
+                .filter(seat -> seat.code().equals("A1"))
+                .findFirst()
+                .orElseThrow();
+        assertTrue(accessibleSeat.accessible());
+        assertEquals("Left", accessibleSeat.section());
+
+        var blockedSeat = seats.stream()
+                .filter(seat -> seat.code().equals("B6"))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(
+                SeatingMapManagementService.SeatStatus.BLOCKED,
+                blockedSeat.status()
+        );
+        assertEquals("Right", blockedSeat.section());
+
+        var event = events.findById(eventId).orElseThrow();
+        assertEquals(Integer.valueOf(11), event.getCapacity());
+        assertFalse(event.isSeatIdentifiersConfirmed());
+    }
+
+    @Test
+    void frontStageAllocationKeepsGroupOnOneSideOfAisle() {
+        var generated = frontStageTemplates.generate(
+                new FrontStageTemplateRequest(
+                        "Front-stage allocation demo",
+                        1, 4, 2,
+                        List.of(),
+                        List.of()
+                )
+        );
+
+        // Confirm identifiers only for this synthetic allocation fixture.
+        var confirmMap = new SeatMapRequest(
+                generated.name(),
+                generated.attendeesChooseSeats(),
+                generated.autoMatchTicketCapacities(),
+                true,
+                generated.ticketTypeCapacities(),
+                generated.elements()
+        );
+
+        managedSeating.saveMap(eventId, ownerEmail, confirmMap);
+        publish();
+
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+
+        close();
+
+        seating.allocate(eventId, ownerEmail);
+
+        var firstTicket = seating.ticket(first.id(), studentEmail);
+        var secondTicket = seating.ticket(second.id(), friendEmail);
+
+        assertEquals(BookingStatus.ALLOCATED, firstTicket.booking().status());
+        assertEquals(BookingStatus.ALLOCATED, secondTicket.booking().status());
+        assertNotNull(firstTicket.seatCode());
+        assertNotNull(secondTicket.seatCode());
+        assertNotEquals(firstTicket.seatCode(), secondTicket.seatCode());
+
+        Set<String> assignedCodes = Set.of(
+                firstTicket.seatCode(),
+                secondTicket.seatCode()
+        );
+
+        assertTrue(
+                assignedCodes.equals(Set.of("A1", "A2"))
+                || assignedCodes.equals(Set.of("A3", "A4")),
+                "The group must occupy adjacent seats on one side of the aisle"
+        );
+
+        assertEquals(Boolean.FALSE, generated.identifiersConfirmed());
+    }
+
+    @Test
+    void assignedSeatingEventCannotBePublishedWithoutLayout() {
+        var event = events.findById(eventId).orElseThrow();
+        event.setSeatIdentifiersConfirmed(true);
+        events.saveAndFlush(event);
+
+        var error = assertThrows(
+                ResponseStatusException.class,
+                () -> publish()
+        );
+
+        assertEquals(409, error.getStatusCode().value());
+        assertEquals("Save the seating layout before publishing an assigned-seating event",
+                error.getReason());
+
+        var unchanged = events.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.DRAFT, unchanged.getStatus());
+        assertEquals(
+                EventRegistrationStatus.OPEN,
+                unchanged.getRegistrationStatus()
+        );
+    }
+
+    @Test
+    void closingEventWithGeneratedLayoutRejectsNewBookings() {
+        var map = frontStageTemplates.generate(
+                new FrontStageTemplateRequest(
+                        "Registration closure demo",
+                        1, 4, 2,
+                        List.of(),
+                        List.of()
+                )
+        );
+
+        managedSeating.saveMap(eventId, ownerEmail, map);
+        publish();
+
+        var first = book(studentEmail, false, null, false);
+
+        close();
+
+        var closed = events.findById(eventId).orElseThrow();
+        assertEquals(EventStatus.CLOSED, closed.getStatus());
+        assertEquals(
+                EventRegistrationStatus.CLOSED,
+                closed.getRegistrationStatus()
+        );
+
+        var error = assertThrows(
+                ResponseStatusException.class,
+                () -> book(friendEmail, false, null, false)
+        );
+
+        assertEquals(409, error.getStatusCode().value());
+        assertEquals(
+                "Registration is closed for this event",
+                error.getReason()
+        );
+
+        var savedBookings = bookings.findByEventIdOrderByCreatedAtAsc(eventId);
+        assertEquals(1, savedBookings.size());
+        assertEquals(first.id(), savedBookings.get(0).getId());
+    }
+
+    @Test
+    void campusTemplateApiIncludesReginald() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+
+        String reginald =
+                "$[?(@.id == 'usyd-seymour-reginald')]";
+
+        mvc.perform(get("/api/organiser/venue-templates")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(reginald,
+                        org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath(reginald + ".name",
+                        org.hamcrest.Matchers.contains(
+                                "Seymour Centre - Reginald Theatre")))
+                .andExpect(jsonPath(reginald + ".sourceUrl",
+                        org.hamcrest.Matchers.contains(
+                                "https://www.seymourcentre.com/media/"
+                                        + "3rjab23b/reginald-seating-plan.pdf")))
+                .andExpect(jsonPath(
+                        reginald + ".map.ticketTypeCapacities.STANDARD",
+                        org.hamcrest.Matchers.contains(148)))
+                .andExpect(jsonPath(
+                        reginald + ".map.identifiersConfirmed",
+                        org.hamcrest.Matchers.contains(false)));
+    }
+
+    @Test
+    void reginaldTemplatePreservesLayoutAfterReload() throws Exception {
+        var template = campusTemplates.listTemplates().stream()
+                .filter(item -> "usyd-seymour-reginald".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        managedSeating.saveMap(eventId, ownerEmail, template.map());
+
+        // Flush changes and reload entities from the database.
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = managedSeating.organiserMap(eventId, ownerEmail);
+
+        assertEquals(template.name(), reloaded.name());
+        assertEquals(148L, reloaded.totalSeats());
+        assertEquals(148L, reloaded.publicCapacity());
+        assertEquals(17, reloaded.elements().size());
+
+        for (var expectedElement : template.map().elements()) {
+            var actualElement = reloaded.elements().stream()
+                    .filter(element -> expectedElement.key().equals(element.key()))
+                    .findFirst()
+                    .orElseThrow();
+
+            assertEquals(expectedElement.type(), actualElement.type());
+            assertEquals(expectedElement.seats().size(), actualElement.seats().size());
+
+            for (var expectedSeat : expectedElement.seats()) {
+                var actualSeat = actualElement.seats().stream()
+                        .filter(seat -> expectedSeat.code().equals(seat.code()))
+                        .findFirst()
+                        .orElseThrow();
+
+                assertEquals(expectedSeat.section(), actualSeat.section());
+                assertEquals(expectedSeat.rowLabel(), actualSeat.rowLabel());
+                assertEquals(expectedSeat.rowIndex(), actualSeat.rowIndex());
+                assertEquals(expectedSeat.seatNumber(), actualSeat.seatNumber());
+                assertEquals(expectedSeat.positionX(), actualSeat.positionX());
+                assertEquals(expectedSeat.positionY(), actualSeat.positionY());
+                assertEquals(expectedSeat.accessible(), actualSeat.accessible());
+            }
+        }
+
+        var savedEvent = events.findById(eventId).orElseThrow();
+        assertEquals(Integer.valueOf(148), savedEvent.getCapacity());
+        assertFalse(savedEvent.isSeatIdentifiersConfirmed());
+    }
+
+    @Test
+    void yorkTemplatePreservesLayoutAfterReload() throws Exception {
+        var template = campusTemplates.listTemplates().stream()
+                .filter(item -> "usyd-seymour-york".equals(item.id()))
+                .findFirst()
+                .orElseThrow();
+
+        managedSeating.saveMap(eventId, ownerEmail, template.map());
+
+        // Flush changes and reload entities from the database.
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = managedSeating.organiserMap(eventId, ownerEmail);
+
+        assertEquals(template.name(), reloaded.name());
+        assertEquals(781L, reloaded.totalSeats());
+        assertEquals(781L, reloaded.publicCapacity());
+        assertEquals(60, reloaded.elements().size());
+
+        for (var expectedElement : template.map().elements()) {
+            var actualElement = reloaded.elements().stream()
+                    .filter(element -> expectedElement.key().equals(element.key()))
+                    .findFirst()
+                    .orElseThrow();
+
+            assertEquals(expectedElement.type(), actualElement.type());
+            assertEquals(expectedElement.seats().size(), actualElement.seats().size());
+
+            for (var expectedSeat : expectedElement.seats()) {
+                var actualSeat = actualElement.seats().stream()
+                        .filter(seat -> expectedSeat.code().equals(seat.code()))
+                        .findFirst()
+                        .orElseThrow();
+
+                assertEquals(expectedSeat.section(), actualSeat.section());
+                assertEquals(expectedSeat.rowLabel(), actualSeat.rowLabel());
+                assertEquals(expectedSeat.rowIndex(), actualSeat.rowIndex());
+                assertEquals(expectedSeat.seatNumber(), actualSeat.seatNumber());
+                assertEquals(expectedSeat.positionX(), actualSeat.positionX());
+                assertEquals(expectedSeat.positionY(), actualSeat.positionY());
+                assertEquals(expectedSeat.accessible(), actualSeat.accessible());
+            }
+        }
+
+        var savedEvent = events.findById(eventId).orElseThrow();
+        assertEquals(Integer.valueOf(781), savedEvent.getCapacity());
+        assertFalse(savedEvent.isSeatIdentifiersConfirmed());
+    }
+
+    @Test
+    void campusTemplateApiIncludesYork() throws Exception {
+        var owner =  users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+
+        String york = "$[?(@.id == 'usyd-seymour-york')]";
+
+        mvc.perform(get("/api/organiser/venue-templates")
+                .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(york,
+                        org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath(york + ".name",
+                        org.hamcrest.Matchers.contains(
+                                "Seymour Centre - York Theatre")))
+                .andExpect(jsonPath(york + ".sourceUrl",
+                        org.hamcrest.Matchers.contains(
+                                "https://www.seymourcentre.com/media/"
+                                + "vyfjqbae/york-theatre-seating-plan.pdf")))
+                .andExpect(jsonPath(york + ".map.ticketTypeCapacities.STANDARD",
+                        org.hamcrest.Matchers.contains(781)))
+                .andExpect(jsonPath(york + ".map.identifiersConfirmed",
+                        org.hamcrest.Matchers.contains(false)));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "FRONT, Left",
+            "FAN, Left",
+            "CENTRAL, North-Left"
+    })
+    void externalTemplatesCanBeGeneratedOnlyByOrganisers(
+            String template, String expectedSection
+    ) throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+        String studentToken = tokens.issueToken(student).token();
+
+        String body = """
+                {
+                "name": "External API demo",
+                "template": "%s",
+                "rows": 2,
+                "seatsPerRow": 6,
+                "aisleAfter": 3,
+                "blockedCodes": ["B6"],
+                "accessibleCodes": ["A1"]
+                }
+                """.formatted(template);
+
+        String endpoint = "/api/organiser/venue-templates/external";
+
+        mvc.perform(post(endpoint)
+                .header("Authorization", "Bearer " + ownerToken)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("External API demo"))
+
+                .andExpect(jsonPath("$.ticketTypeCapacities.STANDARD").value(11))
+
+                .andExpect(jsonPath("$.identifiersConfirmed").value(false))
+                .andExpect(jsonPath("$.elements.length()").value(4))
+
+                .andExpect(jsonPath("$.elements[0].seats[0].code").value("A1"))
+                .andExpect(jsonPath("$.elements[0].seats[0].section")
+                        .value(expectedSection))
+
+                .andExpect(jsonPath("$.elements[0].seats[0].accessible")
+                        .value(true))
+
+                .andExpect(jsonPath("$.elements[3].seats[2].code").value("B6"))
+                .andExpect(jsonPath("$.elements[3].seats[2].blocked")
+                        .value(true));
+
+        mvc.perform(post(endpoint)
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(post(endpoint)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void externalTemplateApiRejectsInvalidRequest() throws Exception {
+        var owner = users.findByEmail(ownerEmail).orElseThrow();
+        String ownerToken = tokens.issueToken(owner).token();
+
+        String validBody = """
+                {
+                    "name": "External validation demo",
+                    "template": "FAN",
+                    "rows": 2,
+                    "seatsPerRow": 6,
+                    "aisleAfter": 3,
+                    "blockedCodes": ["B6"],
+                    "accessibleCodes": ["A1"]
+                    }
+        """;
+
+        var invalidBodies = List.of(
+                validBody.replace("\"FAN\"", "\"UNKNOWN\""),
+                validBody.replace("\"FAN\"", "null"),
+                validBody.replace("\"rows\": 2", "\"rows\": 0"),
+                validBody.replace("\"seatsPerRow\": 6",
+                        "\"seatsPerRow\": 21"
+                ),
+                validBody.replace("\"aisleAfter\": 3", "\"aisleAfter\": 6"),
+                validBody.replace("[\"B6\"]", "[\"B7\"]"),
+                validBody.replace("[\"A1\"]", "[\"A1\", \"A1\"]"),
+                validBody.replace("[\"A1\"]", "[\"B6\"]"),
+                validBody.replace(
+                        "\"External validation demo\"", "\"\""
+                ),
+                validBody.replace("\"FAN\"", "\"CENTRAL\"")
+                        .replace("\"rows\": 2", "\"rows\": 1")
+                        .replace("[\"B6\"]", "[]")
+        );
+                for (int i = 0; i < invalidBodies.size(); i++) {
+                    mvc.perform(post("/api/organiser/venue-templates/external")
+                            .header("Authorization", "Bearer " + ownerToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(invalidBodies.get(i)))
+                            .andExpect(status().isBadRequest());
+                }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"FRONT", "FAN", "CENTRAL"})
+    void externalTemplatesCanBeSavedAndReloaded(
+            String template
+    ) {
+        var request = new ExternalVenueTemplateRequest(
+                "Persisted external demo",
+                SeatingLayoutRequest.Template.valueOf(template),
+                3, 4, 2,
+                List.of("C4"),
+                List.of("A1")
+        );
+
+        var generated = externalTemplates.generate(request);
+        managedSeating.saveMap(eventId, ownerEmail, generated);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloaded = managedSeating.organiserMap(eventId, ownerEmail);
+
+        assertEquals(generated.name(), reloaded.name());
+        assertEquals(12L, reloaded.totalSeats());
+        assertEquals(11L, reloaded.publicCapacity());
+        assertEquals(6, reloaded.elements().size());
+
+        var actualSeats = reloaded.elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .toList();
+
+        assertEquals(12L, actualSeats.stream()
+                .map(seat -> seat.code()).distinct().count());
+
+        for (var element : generated.elements()) {
+            for (var expected : element.seats()) {
+                var actual = actualSeats.stream()
+                        .filter(seat -> seat.code().equals(expected.code()))
+                        .findFirst().orElseThrow();
+
+                assertEquals(expected.section(), actual.section());
+                assertEquals(expected.rowLabel(), actual.rowLabel());
+                assertEquals(expected.rowIndex(), actual.rowIndex());
+                assertEquals(expected.seatNumber(), actual.seatNumber());
+                assertEquals(expected.positionX(), actual.positionX(), 0.000001);
+                assertEquals(expected.positionY(), actual.positionY(), 0.000001);
+                assertEquals(expected.accessible(), actual.accessible());
+
+                if (expected.blocked()) {
+                    assertEquals(
+                            SeatingMapManagementService.SeatStatus.BLOCKED,
+                            actual.status()
+                    );
+                } else {
+                    assertNotEquals(
+                            SeatingMapManagementService.SeatStatus.BLOCKED,
+                            actual.status()
+                    );
+                }
+            }
+        }
+
+        var savedEvent = events.findById(eventId).orElseThrow();
+        assertEquals(Integer.valueOf(11), savedEvent.getCapacity());
+        assertFalse(savedEvent.isSeatIdentifiersConfirmed());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"FRONT", "FAN", "CENTRAL"})
+    void externalTemplateAllocationPreservesAccessibilityAndAisle(
+            String template
+    ) {
+        var generated = externalTemplates.generate(
+                new ExternalVenueTemplateRequest(
+                        "External allocation demo",
+
+                        SeatingLayoutRequest.Template.valueOf(template),
+                        2, 4, 2,
+                        List.of("B4"),
+                        List.of("A1")
+                )
+        );
+
+                // Confirm identifiers only for this synthetic test fixture.
+        var confirmedMap = new SeatMapRequest(
+                generated.name(),
+                generated.attendeesChooseSeats(),
+                generated.autoMatchTicketCapacities(),
+                true,
+                generated.ticketTypeCapacities(),
+                generated.elements()
+        );
+        managedSeating.saveMap(eventId, ownerEmail, confirmedMap);
+        publish();
+
+        var first = book(studentEmail, true, null, true);
+        var second = book(friendEmail, false, first.groupCode(), false
+        );
+
+        close();
+        seating.allocate(eventId, ownerEmail);
+
+        var firstTicket = seating.ticket(first.id(), studentEmail);
+        var secondTicket = seating.ticket(second.id(), friendEmail);
+
+        assertEquals(
+                BookingStatus.ALLOCATED,
+                firstTicket.booking().status()
+        );
+        assertEquals(
+                BookingStatus.ALLOCATED,
+                secondTicket.booking().status()
+        );
+        // A1 is the only accessible seat; A2 is its adjacent companion.
+        assertEquals("A1", firstTicket.seatCode());
+        assertEquals("A2", secondTicket.seatCode());
+        assertNotEquals(firstTicket.seatCode(), secondTicket.seatCode());
+
+        assertNotEquals("B4", firstTicket.seatCode());
+        assertNotEquals("B4", secondTicket.seatCode());
+
+        assertEquals(Boolean.FALSE, generated.identifiersConfirmed());
     }
 }
