@@ -179,6 +179,13 @@ public class SeatingService {
         return evaluation(event, confirmedBookings(eventId));
     }
 
+    @Transactional(readOnly = true)
+    public AllocationMetricsResponse metricsResponse(Long eventId, String email) {
+        var evaluation = metrics(eventId, email);
+        var run = runs.findById(eventId).orElseThrow(() -> conflict("Run allocation before reading metrics"));
+        return AllocationMetricsResponse.from(evaluation, run.getElapsedMillis());
+    }
+
     private AllocationEvaluation evaluation(Event event, List<Booking> confirmed) {
         if (!event.isSeatIdentifiersConfirmed()) return AllocationEvaluation.generalAdmission();
         List<AllocationSeat> inputSeats;

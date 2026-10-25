@@ -1,6 +1,6 @@
 package com.ooaf.eventticketing.controller;
-import com.ooaf.eventticketing.allocation.AllocationEvaluation;
 import com.ooaf.eventticketing.allocation.AllocationStrategy;
+import com.ooaf.eventticketing.dto.AllocationMetricsResponse;
 import com.ooaf.eventticketing.dto.SeatingLayoutRequest;
 import com.ooaf.eventticketing.entity.AllocationRun;
 import com.ooaf.eventticketing.service.SeatingService;
@@ -26,8 +26,8 @@ public class SeatingController {
         return service.allocate(id, auth.getName(), strategy);
     }
     @GetMapping("/api/organiser/events/{id}/allocation/metrics")
-    public AllocationEvaluation metrics(@PathVariable Long id, Authentication auth) {
-        return service.metrics(id, auth.getName());
+    public AllocationMetricsResponse metrics(@PathVariable Long id, Authentication auth) {
+        return service.metricsResponse(id, auth.getName());
     }
     @GetMapping("/api/bookings/{id}/ticket")
     public SeatingService.TicketView ticket(@PathVariable Long id, Authentication auth) { return service.ticket(id, auth.getName()); }
