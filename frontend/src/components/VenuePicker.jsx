@@ -1,11 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { request } from '../api/apiClient'; 
 import './VenuePicker.css';
-
-const MOCK_ROOMS = [
-  { id: 'woolley', name: 'Woolley Lecture Theatre', building: 'Quadrangle', capacity: 350, rows: 14, seatsPerRow: 25, hasNumberedSeats: true, shape: 'front' },
-  { id: 'sit-lt1', name: 'SIT Lecture Theatre 1', building: 'SIT Building', capacity: 125, rows: 9, seatsPerRow: 14, hasNumberedSeats: true, shape: 'fan' },
-  { id: 'manning', name: 'Manning Bar', building: 'Manning House', capacity: 200, rows: 10, seatsPerRow: 20, hasNumberedSeats: false, shape: 'front' },
-];
 
 const TEMPLATES = [
   { id: 'front', name: 'Front stage', blurb: 'Rows facing a stage at the front.', shape: 'front' },
@@ -13,7 +8,6 @@ const TEMPLATES = [
   { id: 'central', name: 'Central stage', blurb: 'Seats on both sides of a stage in the middle.', shape: 'central' },
 ];
 
-// Exported for unit tests — pure function.
 export function buildRoomLayout(room) {
   return {
     mode: 'usyd',
@@ -27,7 +21,6 @@ export function buildRoomLayout(room) {
   };
 }
 
-// Exported for unit tests — pure function.
 export function buildTemplateLayout(template, config) {
   const capacity = (config.rows || 0) * (config.seatsPerRow || 0);
   if (capacity <= 0) return null;
@@ -53,7 +46,49 @@ export function VenuePicker({ value, onSelect }) {
     hasNumberedSeats: value?.hasNumberedSeats || false,
   });
 
-  const room = MOCK_ROOMS.find((r) => r.id === roomId) || null;
+  // --- EXPLICIT API STATES ---
+  const [realRooms, setRealRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    
+    request('/organiser/seating-profiles')
+      .then((data) => {
+        if (cancelled) return;
+        if (data && data.length > 0) {
+          const mappedRooms = data.map(room => ({
+            id: room.id,
+            name: room.name,
+            building: room.notice || 'Campus Room',
+            capacity: room.rows * room.seatsPerRow,
+            rows: room.rows,
+            seatsPerRow: room.seatsPerRow,
+            hasNumberedSeats: false, // Set to false for unverified demo profiles
+            shape: room.template ? room.template.toLowerCase() : 'front'
+          }));
+          setRealRooms(mappedRooms);
+        } else {
+          setRealRooms([]);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error(err);
+        setError("Failed to load venue rooms. Please check your connection and try again.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
+  // --------------------------------------------------
+
+  const room = realRooms.find((r) => r.id === roomId) || null;
   const template = TEMPLATES.find((t) => t.id === templateId) || null;
 
   const capacity =
@@ -73,7 +108,7 @@ export function VenuePicker({ value, onSelect }) {
 
   function pickRoom(id) {
     setRoomId(id);
-    const r = MOCK_ROOMS.find((x) => x.id === id);
+    const r = realRooms.find((x) => x.id === id);
     if (r) emit(buildRoomLayout(r));
   }
 
@@ -117,28 +152,40 @@ export function VenuePicker({ value, onSelect }) {
       </div>
 
       {mode === 'usyd' && (
-        <div className="venue-grid">
-          {MOCK_ROOMS.map((r) => {
-            const selected = roomId === r.id;
-            return (
-              <button
-                key={r.id}
-                type="button"
-                className={`venue-card ${selected ? 'selected' : ''}`}
-                onClick={() => pickRoom(r.id)}
-                aria-pressed={selected}
-              >
-                <span className="venue-card-name">{r.name}</span>
-                <span className="venue-card-meta">
-                  {r.building} · {r.capacity} seats
-                </span>
-                {r.hasNumberedSeats === false && (
-                  <span className="venue-card-flag">No numbered seats</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <>
+          {loading && <p className="results-note">Loading rooms...</p>}
+          
+          {error && <div className="form-banner error">{error}</div>}
+          
+          {!loading && !error && realRooms.length === 0 && (
+            <p className="results-note">No rooms available for this event.</p>
+          )}
+
+          {!loading && !error && realRooms.length > 0 && (
+            <div className="venue-grid">
+              {realRooms.map((r) => {
+                const selected = roomId === r.id;
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={`venue-card ${selected ? 'selected' : ''}`}
+                    onClick={() => pickRoom(r.id)}
+                    aria-pressed={selected}
+                  >
+                    <span className="venue-card-name">{r.name}</span>
+                    <span className="venue-card-meta">
+                      {r.building} · {r.capacity} seats
+                    </span>
+                    {r.hasNumberedSeats === false && (
+                      <span className="venue-card-flag">No numbered seats</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {mode === 'external' && (

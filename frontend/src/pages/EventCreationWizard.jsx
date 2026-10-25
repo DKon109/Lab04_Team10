@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TopNav } from '../components/layout/TopNav';
 import { createEvent } from '../api/eventsApi';
+import { request } from '../api/apiClient';
 import { formatEventDate } from '../utils/format';
 import { VenuePicker } from '../components/VenuePicker';
 import './EventCreationWizard.css';
@@ -30,7 +31,6 @@ const EMPTY_DRAFT = {
   unnumberedConfirmed: false,
 };
 
-// Exported for unit tests — pure function, no React.
 export function validateStep(step, draft) {
   const errors = {};
 
@@ -46,17 +46,9 @@ export function validateStep(step, draft) {
 
   if (step === 3) {
     if (!draft.venueLayout) errors.venueLayout = 'Pick a room or configure a template.';
-
-    // Physical execution rule from the proposal: group-allocated
-    // seating on an unnumbered venue requires explicit confirmation.
     const unnumbered = draft.venueLayout?.hasNumberedSeats === false;
-    if (
-      unnumbered &&
-      draft.seatingMode === 'group-allocated' &&
-      !draft.unnumberedConfirmed
-    ) {
-      errors.venueLayout =
-        'Confirm that Tixora seat identifiers will be physically installed, or switch to general admission.';
+    if (unnumbered && draft.seatingMode === 'group-allocated' && !draft.unnumberedConfirmed) {
+      errors.venueLayout = 'Confirm that Tixora seat identifiers will be physically installed, or switch to general admission.';
     }
   }
 
@@ -77,6 +69,9 @@ export function EventCreationWizard() {
   const [errors, setErrors] = useState({});
   const [banner, setBanner] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Track the created draft ID so retries don't create duplicates
+  const [draftId, setDraftId] = useState(null);
 
   function update(field) {
     return (e) => setDraft((prev) => ({ ...prev, [field]: e.target.value }));
@@ -109,8 +104,10 @@ export function EventCreationWizard() {
     }
 
     setSubmitting(true);
+    let currentId = draftId;
+
     try {
-      const created = await createEvent({
+      const payload = {
         title: draft.title.trim(),
         category: draft.category.trim(),
         dateTime: draft.dateTime,
@@ -121,21 +118,56 @@ export function EventCreationWizard() {
         organiserType: draft.organiserType,
         imageUrl: draft.imageUrl.trim() || null,
         description: draft.description.trim() || null,
-        tags: draft.tags
-          .split(',')
-          .map((t) => t.trim().toLowerCase())
-          .filter(Boolean),
-        seatingMode: draft.seatingMode,
-        venueLayout: draft.venueLayout,
+        tags: draft.tags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean),
+      };
+
+      // 1. Create or Update the event
+      if (!currentId) {
+        const created = await createEvent(payload);
+        currentId = created.id;
+        setDraftId(currentId);
+      } else {
+        // Retrying with an already-created draft: apply any edited fields first.
+        await request(`/events/${currentId}`, {
+          method: 'PUT',
+          body: payload,
+        });
+      }
+
+      // 2. Save the Seating Layout
+      const layout = draft.venueLayout;
+      await request(`/organiser/events/${currentId}/seating`, {
+        method: 'PUT',
+        body: {
+          source: layout.mode === 'external' ? 'EXTERNAL' : 'CAMPUS_DEMO',
+          roomId: layout.mode === 'usyd' ? layout.roomId : null,
+          template: layout.shape ? layout.shape.toUpperCase() : 'FRONT',
+          rows: layout.rows,
+          seatsPerRow: layout.seatsPerRow,
+          aisleAfter: 0,
+          blockedCodes: [],
+          accessibleCodes: [],
+          identifiersConfirmed: draft.seatingMode === 'general-admission' 
+            ? false 
+            : (layout.hasNumberedSeats ? true : draft.unnumberedConfirmed),
+        }
       });
-      navigate(`/events/${created.id}`, {
-        state: { justPublished: true },
+
+      // 3. Publish the Event
+      await request(`/events/${currentId}/status`, {
+        method: 'PATCH',
+        body: { status: 'published' }
       });
+
+      // 4. Only navigate after everything succeeds
+      navigate(`/organiser/dashboard`, { state: { justPublished: true } });
+
     } catch (error) {
+      console.error("Failed to publish:", error);
       setErrors(error.fieldErrors || {});
       setBanner({
         type: 'error',
-        text: error.message || 'Could not publish the event. Please try again.',
+        text: error.message || 'Could not publish the event. Please check the details and try again.',
       });
     } finally {
       setSubmitting(false);
@@ -241,13 +273,7 @@ export function EventCreationWizard() {
               <VenuePicker value={draft.venueLayout} onSelect={setLayout} />
 
               <fieldset className="field" style={{ marginTop: 16, border: 0, padding: 0 }}>
-                <legend
-                  style={{
-                    fontSize: '0.875rem',
-                    fontWeight: 600,
-                    marginBottom: 8,
-                  }}
-                >
+                <legend style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8 }}>
                   Seating mode
                 </legend>
                 <label style={{ display: 'block', marginBottom: 6 }}>
@@ -256,12 +282,7 @@ export function EventCreationWizard() {
                     name="seatingMode"
                     value="general-admission"
                     checked={draft.seatingMode === 'general-admission'}
-                    onChange={(e) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        seatingMode: e.target.value,
-                      }))
-                    }
+                    onChange={(e) => setDraft((prev) => ({ ...prev, seatingMode: e.target.value }))}
                   />{' '}
                   General admission
                 </label>
@@ -271,37 +292,22 @@ export function EventCreationWizard() {
                     name="seatingMode"
                     value="group-allocated"
                     checked={draft.seatingMode === 'group-allocated'}
-                    onChange={(e) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        seatingMode: e.target.value,
-                      }))
-                    }
+                    onChange={(e) => setDraft((prev) => ({ ...prev, seatingMode: e.target.value }))}
                   />{' '}
                   Group allocated
                 </label>
               </fieldset>
 
-              {draft.venueLayout?.hasNumberedSeats === false &&
-                draft.seatingMode === 'group-allocated' && (
-                  <label
-                    className="venue-checkbox"
-                    style={{ marginTop: 12, display: 'flex', gap: 8 }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={draft.unnumberedConfirmed}
-                      onChange={(e) =>
-                        setDraft((prev) => ({
-                          ...prev,
-                          unnumberedConfirmed: e.target.checked,
-                        }))
-                      }
-                    />
-                    I confirm Tixora-generated row and seat identifiers will
-                    be physically installed at this venue.
-                  </label>
-                )}
+              {draft.venueLayout?.hasNumberedSeats === false && draft.seatingMode === 'group-allocated' && (
+                <label className="venue-checkbox" style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.unnumberedConfirmed}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, unnumberedConfirmed: e.target.checked }))}
+                  />
+                  I confirm Tixora-generated row and seat identifiers will be physically installed at this venue.
+                </label>
+              )}
 
               {fieldError('venueLayout')}
             </>
@@ -388,16 +394,12 @@ export function EventCreationWizard() {
                 </dd>
                 <dt>Seating mode</dt>
                 <dd>
-                  {draft.seatingMode === 'group-allocated'
-                    ? 'Group allocated'
-                    : 'General admission'}
+                  {draft.seatingMode === 'group-allocated' ? 'Group allocated' : 'General admission'}
                 </dd>
                 <dt>Audience</dt>
                 <dd>{draft.audience === 'USYD' ? 'USYD campus' : 'All Sydney'}</dd>
                 <dt>Organiser</dt>
-                <dd>
-                  {draft.organiserName || '—'} ({draft.organiserType})
-                </dd>
+                <dd>{draft.organiserName || '—'} ({draft.organiserType})</dd>
                 <dt>Tags</dt>
                 <dd>{draft.tags || '—'}</dd>
                 <dt>Description</dt>
@@ -408,26 +410,12 @@ export function EventCreationWizard() {
 
           <div className="wizard-actions">
             {step > 1 && (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={goBack}
-                disabled={submitting}
-              >
+              <button type="button" className="btn btn-ghost" onClick={goBack} disabled={submitting}>
                 Back
               </button>
             )}
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={goNext}
-              disabled={submitting}
-            >
-              {submitting
-                ? 'Publishing…'
-                : step === TOTAL_STEPS
-                ? 'Publish event'
-                : 'Next'}
+            <button type="button" className="btn btn-primary" onClick={goNext} disabled={submitting}>
+              {submitting ? 'Publishing…' : step === TOTAL_STEPS ? 'Publish event' : 'Next'}
             </button>
           </div>
         </section>
@@ -437,13 +425,8 @@ export function EventCreationWizard() {
 }
 
 function DraftPreviewCard({ draft }) {
-  const tags = draft.tags
-    .split(',')
-    .map((t) => t.trim())
-    .filter(Boolean);
-
-  const validDate =
-    draft.dateTime && !Number.isNaN(new Date(draft.dateTime).getTime());
+  const tags = draft.tags.split(',').map((t) => t.trim()).filter(Boolean);
+  const validDate = draft.dateTime && !Number.isNaN(new Date(draft.dateTime).getTime());
 
   return (
     <article className="event-card wizard-preview-card">
@@ -455,18 +438,12 @@ function DraftPreviewCard({ draft }) {
             {(draft.title || '?').charAt(0).toUpperCase()}
           </div>
         )}
-        {draft.category && (
-          <span className="badge badge-category">{draft.category}</span>
-        )}
+        {draft.category && <span className="badge badge-category">{draft.category}</span>}
       </div>
       <div className="body">
-        <p className="when">
-          {validDate ? formatEventDate(draft.dateTime) : 'Date not set yet'}
-        </p>
+        <p className="when">{validDate ? formatEventDate(draft.dateTime) : 'Date not set yet'}</p>
         <h3>{draft.title || 'Untitled event'}</h3>
-        <p className="meta">
-          {draft.venue ? `${draft.venue}, ${draft.city}` : 'Venue not set yet'}
-        </p>
+        <p className="meta">{draft.venue ? `${draft.venue}, ${draft.city}` : 'Venue not set yet'}</p>
         {tags.length > 0 && (
           <div className="tag-row">
             {tags.map((t, i) => (

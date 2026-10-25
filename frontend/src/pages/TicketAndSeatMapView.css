@@ -86,6 +86,17 @@
   transform: scale(1.2);
 }
 
+/* --- NEW: Blocked and Accessible Seat Styles --- */
+.seat-map-dot.blocked {
+  background: #ff4d4d;
+  opacity: 0.5;
+}
+
+.seat-map-dot.accessible {
+  background: #4da6ff;
+}
+/* ------------------------------------------------ */
+
 .seat-map-caption {
   margin: 12px 0 0;
   font-size: 0.9rem;
