@@ -8,10 +8,9 @@ import { OrganiserDashboard } from './pages/OrganiserDashboard';
 import { EventCreationWizard } from './pages/EventCreationWizard';
 import { TicketAndSeatMapView } from './pages/TicketAndSeatMapView';
 
-// --- REAL FILES FROM YOUR SCREENSHOT ---
 import BookingPage from './pages/BookingPage';
-import  MyBookingsPage  from './pages/MyBookingsPage';
-import  EventSeatingPage  from './pages/EventSeatingPage';
+import MyBookingsPage from './pages/MyBookingsPage';
+import EventSeatingPage from './pages/EventSeatingPage';
 
 export default function App() {
   return (
@@ -31,9 +30,11 @@ export default function App() {
           <Route path="/organiser/dashboard" element={<ProtectedRoute role="COMMITTEE_MEMBER"><OrganiserDashboard /></ProtectedRoute>} />
           <Route path="/organiser/new" element={<ProtectedRoute role="COMMITTEE_MEMBER"><EventCreationWizard /></ProtectedRoute>} />
           
-          {/* RESTORED ORGANISER MANAGEMENT ROUTES (Pointing to EventSeatingPage) */}
+          {/* ORGANISER MANAGEMENT ROUTES */}
           <Route path="/organiser/events/:eventId" element={<ProtectedRoute role="COMMITTEE_MEMBER"><EventSeatingPage /></ProtectedRoute>} />
-          <Route path="/organiser/events/:eventId/edit" element={<ProtectedRoute role="COMMITTEE_MEMBER"><EventSeatingPage /></ProtectedRoute>} />
+          
+          {/* FIXED: Edit route now goes to OrganiserPage */}
+          <Route path="/organiser/events/:eventId/edit" element={<ProtectedRoute role="COMMITTEE_MEMBER"><OrganiserPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/events" replace />} />
         </Routes>

@@ -95,7 +95,7 @@ export function OrganiserPage() {
       <main className="page">
         <p className="eyebrow">BUILD SOMETHING WORTH SHOWING UP FOR</p><h1 className="page-heading">{eventId ? 'Edit your draft' : 'Create your next event'}</h1>
         <p className="page-sub">
-          Save a draft, configure the venue, then publish when you're ready. <Link to="/organiser">My events</Link>
+          Save a draft, configure the venue, then publish when you're ready. <Link to="/organiser/dashboard">My events</Link>
         </p>
 
         <div className="organiser-grid">

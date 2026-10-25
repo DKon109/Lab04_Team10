@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TopNav } from '../components/layout/TopNav';
 import { createEvent } from '../api/eventsApi';
-import { request } from '../api/apiClient'; // Added for the new API calls
+import { request } from '../api/apiClient';
 import { formatEventDate } from '../utils/format';
 import { VenuePicker } from '../components/VenuePicker';
 import './EventCreationWizard.css';
@@ -69,6 +69,9 @@ export function EventCreationWizard() {
   const [errors, setErrors] = useState({});
   const [banner, setBanner] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Track the created draft ID so retries don't create duplicates
+  const [draftId, setDraftId] = useState(null);
 
   function update(field) {
     return (e) => setDraft((prev) => ({ ...prev, [field]: e.target.value }));
@@ -100,11 +103,11 @@ export function EventCreationWizard() {
       return;
     }
 
-    // --- THE NEW PUBLISH FLOW ---
     setSubmitting(true);
+    let currentId = draftId;
+
     try {
-      // 1. Create the event (Returns a DRAFT)
-      const created = await createEvent({
+      const payload = {
         title: draft.title.trim(),
         category: draft.category.trim(),
         dateTime: draft.dateTime,
@@ -116,13 +119,24 @@ export function EventCreationWizard() {
         imageUrl: draft.imageUrl.trim() || null,
         description: draft.description.trim() || null,
         tags: draft.tags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean),
-      });
+      };
 
-      const eventId = created.id;
+      // 1. Create or Update the event
+      if (!currentId) {
+        const created = await createEvent(payload);
+        currentId = created.id;
+        setDraftId(currentId);
+      } else {
+        // Retrying with an already-created draft: apply any edited fields first.
+        await request(`/events/${currentId}`, {
+          method: 'PUT',
+          body: payload,
+        });
+      }
 
-      // 2. Save the Seating Layout (Ryoji's API)
+      // 2. Save the Seating Layout
       const layout = draft.venueLayout;
-      await request(`/organiser/events/${eventId}/seating`, {
+      await request(`/organiser/events/${currentId}/seating`, {
         method: 'PUT',
         body: {
           source: layout.mode === 'external' ? 'EXTERNAL' : 'CAMPUS_DEMO',
@@ -140,7 +154,7 @@ export function EventCreationWizard() {
       });
 
       // 3. Publish the Event
-      await request(`/events/${eventId}/status`, {
+      await request(`/events/${currentId}/status`, {
         method: 'PATCH',
         body: { status: 'published' }
       });

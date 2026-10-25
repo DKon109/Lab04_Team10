@@ -57,4 +57,10 @@ describe('App Routing Regression Tests', () => {
     const { getByText } = renderRoute('/organiser/events/789');
     expect(getByText('EventSeatingPage')).toBeInTheDocument();
   });
+
+  // NEW: The test Ryoji asked for
+  it('routes /organiser/events/:eventId/edit to OrganiserPage', () => {
+    const { getByText } = renderRoute('/organiser/events/789/edit');
+    expect(getByText('OrganiserPage')).toBeInTheDocument();
+  });
 });
