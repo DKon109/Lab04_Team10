@@ -1,0 +1,66 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import App from '../App';
+
+vi.mock('../context/AuthContext', () => ({
+  AuthProvider: ({ children }) => <div>{children}</div>,
+  useAuth: () => ({ user: { id: 1, role: 'COMMITTEE_MEMBER' }, initialising: false }),
+}));
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    BrowserRouter: ({ children }) => <>{children}</>,
+  };
+});
+
+// FIX: Use default export for the pages that are imported as default in App.jsx
+vi.mock('../pages/BookingPage', () => ({ default: () => <div>BookingPage</div> }));
+vi.mock('../pages/MyBookingsPage', () => ({ default: () => <div>MyBookingsPage</div> }));
+vi.mock('../pages/EventSeatingPage', () => ({ default: () => <div>EventSeatingPage</div> }));
+
+// These are still named exports
+vi.mock('../pages/TicketAndSeatMapView', () => ({ TicketAndSeatMapView: () => <div>TicketView</div> }));
+vi.mock('../pages/OrganiserDashboard', () => ({ OrganiserDashboard: () => <div>OrganiserDashboard</div> }));
+vi.mock('../pages/EventCreationWizard', () => ({ EventCreationWizard: () => <div>EventCreationWizard</div> }));
+vi.mock('../pages/EventsPage', () => ({ EventsPage: () => <div>EventsPage</div> }));
+vi.mock('../pages/AuthPage', () => ({ AuthPage: () => <div>AuthPage</div> }));
+vi.mock('../pages/OrganiserPage', () => ({ OrganiserPage: () => <div>OrganiserPage</div> }));
+
+describe('App Routing Regression Tests', () => {
+  const renderRoute = (route) => {
+    return render(
+      <MemoryRouter initialEntries={[route]}>
+        <App />
+      </MemoryRouter>
+    );
+  };
+
+  it('routes /events/:eventId/book to BookingPage', () => {
+    const { getByText } = renderRoute('/events/123/book');
+    expect(getByText('BookingPage')).toBeInTheDocument();
+  });
+
+  it('routes /bookings to MyBookingsPage', () => {
+    const { getByText } = renderRoute('/bookings');
+    expect(getByText('MyBookingsPage')).toBeInTheDocument();
+  });
+
+  it('routes /bookings/:bookingId/ticket to TicketAndSeatMapView', () => {
+    const { getByText } = renderRoute('/bookings/456/ticket');
+    expect(getByText('TicketView')).toBeInTheDocument();
+  });
+
+  it('routes /organiser/events/:eventId to EventSeatingPage', () => {
+    const { getByText } = renderRoute('/organiser/events/789');
+    expect(getByText('EventSeatingPage')).toBeInTheDocument();
+  });
+
+  // NEW: The test Ryoji asked for
+  it('routes /organiser/events/:eventId/edit to OrganiserPage', () => {
+    const { getByText } = renderRoute('/organiser/events/789/edit');
+    expect(getByText('OrganiserPage')).toBeInTheDocument();
+  });
+});

@@ -35,7 +35,7 @@ export default function EventSeatingPage() {
     }, 'Anonymous allocation CSV downloaded. No attendee names or emails are included.');
   }
   const draft = data?.event.status === 'draft';
-  return <><TopNav /><main className="page"><Link className="back-link" to="/organiser">← My events</Link><div className="section-intro"><p className="eyebrow">ORGANISER WORKSPACE</p><h1>{data?.event.title || 'Event seating'}</h1><p>Configure. Publish. Close registration. Allocate.</p></div>
+  return <><TopNav /><main className="page"><Link className="back-link" to="/organiser/dashboard">← My events</Link><div className="section-intro"><p className="eyebrow">ORGANISER WORKSPACE</p><h1>{data?.event.title || 'Event seating'}</h1><p>Configure. Publish. Close registration. Allocate.</p></div>
     {error && <div className="form-banner error" role="alert">{error} {!data && <button className="btn" onClick={() => setLoadVersion(v => v + 1)}>Try again</button>}</div>}
     {message && <p className="form-banner success" role="status">{message}</p>}
     {!data && !error && <p role="status">Loading organiser workspace…</p>}
