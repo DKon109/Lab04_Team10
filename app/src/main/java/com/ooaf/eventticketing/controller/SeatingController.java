@@ -37,4 +37,12 @@ public class SeatingController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=event-" + id + "-allocation.csv")
                 .body(service.export(id, auth.getName()));
     }
+    @GetMapping("/api/organiser/events/{id}/allocation/print")
+    public ResponseEntity<String> printablePlan(@PathVariable Long id, Authentication auth) {
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/html;charset=UTF-8"))
+                .cacheControl(CacheControl.noStore())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=event-" + id + "-seating-plan.html")
+                .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'")
+                .body(service.printablePlan(id, auth.getName()));
+    }
 }
