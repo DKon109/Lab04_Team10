@@ -468,6 +468,14 @@ Observed sequence:
 4. The organiser management screen showed 1 / 60 confirmed bookings.
    Confirming registration closure changed the event to Closed and retained
    that count. The attendee could still open the same booking's ticket.
+5. A second attendee, `sprint3.friend@uni.sydney.edu.au`, directly opened
+   `/events/31/book` after closure. The page displayed `Event not found: 31`
+   and no booking form. This matches the public event lookup's restriction
+   to Published events and demonstrates that the UI blocks this booking path.
+6. The same second attendee directly opened `/bookings/1/ticket`, which
+   belongs to the first attendee. The page displayed `Booking not found`
+   without the event details or booking reference. The owner had previously
+   been able to view this ticket after closure; the second attendee could not.
 
 ### UI defects to coordinate
 
@@ -478,11 +486,11 @@ Observed sequence:
 
 No frontend changes were made as part of this walkthrough. These are
 handoff findings; they have not yet been sent to the owners or resolved.
-After the user was asked to reopen `/events/31/book`, the observed page was
-`/events`; the navigation and HTTP response were not captured. Therefore
-this observation alone does not establish the reason for redirection or
-prove a rejected new booking request. Backend closure regression evidence
-is recorded separately above. Live validation-error handling, assigned-seat
-journeys, managed template consumption and new-booking rejection after
-closure still require their own UI evidence; this walkthrough does not
-establish full SCRUM-50/51/67 completion.
+The earlier observation of `/events` did not establish a redirect; step 5
+records the subsequently verified direct navigation. No checkout POST was
+submitted in that step and no HTTP status was captured. Backend rejection
+of booking requests after closure is covered by the separate automated
+regression evidence above. Live publication-validation error handling,
+assigned-seat journeys and managed template consumption still require their
+own UI evidence; this walkthrough does not establish full SCRUM-50/51/67
+completion.
