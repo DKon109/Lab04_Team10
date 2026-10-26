@@ -566,6 +566,31 @@ This closes the missing-layout publication-error/recovery UI evidence gap.
 It does not cover every validation message or the separate managed-template
 selection workflow. General-admission wording coordination remains as above.
 
+## Draft editing, reload and publication — 27 October 2026
+
+Reference checkout: Ryoji `f03eb48`, local development backend and Safari.
+Event `34` was created through the organiser API as `SCRUM-50 Draft Edit
+Check`, capacity 12, general admission, without a saved layout.
+
+- The owner opened `/organiser/events/34/edit`, changed the title to
+  `SCRUM-50 Draft Edit Verified` and description to
+  `After edit: saved draft values must survive reload.`, then saved.
+- Management retained event ID 34 and Draft status. Reopening Edit event
+  details fetched the changed title and description and retained capacity
+  12. This verifies screen re-entry and retrieval, not an application restart.
+- The owner saved and pressed Publish saved event. Management showed
+  `Event published. Attendees can now book.`, Published, 0 / 12 bookings,
+  General Admission and locked venue configuration. No map was required
+  for this general-admission event.
+
+Together with event 31's creation/preview/closure journey, event 33's
+publication-error recovery, the persistence tests, DataSeederTest and
+closure/checkout regressions, this supplies the SCRUM-50 review evidence.
+The task is ready for In Review; final agreement on closure/payment rules
+remains with Sathish under the SCRUM-45 contract review. This does not
+claim completion of the separate managed-template selection UI or verified
+physical campus journeys. No application code changed during this check.
+
 ## Local assigned-seat walkthrough — 27 October 2026
 
 Reference checkout: Ryoji `2ef13fd`; local development backend and Safari.
