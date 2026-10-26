@@ -1,6 +1,6 @@
 # Event and Venue Backend Handoff
 
-Last updated: 23 October 2026
+Last updated: 26 October 2026
 
 ## Responsibilities
 
@@ -228,6 +228,37 @@ It does not verify application restart or physical seating layouts.
   Total: 83 tests, no failures or errors.
 - Frontend preview and template-selection integration still require
   coordination with Aadi; these backend tests do not verify the UI.
+
+## Venue persistence guarantees
+
+- Duplicate seat codes, including case-only differences such as
+  A1 and a1, are rejected when replacing a managed map.
+- Regression coverage verifies that this rejection preserves the
+  saved map, its version, seat data, ticket capacities, event capacity
+  and physical-identifier confirmation flag.
+- `VenueTemplatePersistenceTest` verifies Everest, Reginald, York,
+  FRONT, FAN and CENTRAL after the saving transaction commits.
+- A separate transaction reloads each map and checks that its saved
+  contents and event capacity are unchanged.
+- External-template checks also verify accessible seat A1, blocked
+  seat C4 and the resulting usable capacity.
+- Templates remain unconfirmed after saving and reloading.
+- These checks verify persistence across committed transactions,
+  not application restart, physical venue accuracy or frontend preview.
+- The test removes its committed fixture data in a finally block.
+
+Validation on 26 October 2026:
+
+- Seating and template regression suite: 84 tests passed.
+- `VenueTemplatePersistenceTest`: 6 tests passed in a separate run.
+
+Run the persistence checks from the app directory using the dedicated
+test database configuration:
+
+    ./mvnw -o -Dtest=VenueTemplatePersistenceTest test
+
+Frontend template selection, preview consistency and the complete
+organiser-to-attendee journey still require integration verification.
 
 ## Registration closure and mock checkout
 
