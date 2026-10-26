@@ -171,6 +171,13 @@ public class EventService {
                     "Event date must be in the future before publishing");
         }
 
+        if (canPublish && (event.getVenue() == null || event.getVenue().isBlank())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Event venue is required before publishing"
+            );
+        }
+
         if (canPublish && (event.getCapacity() == null || event.getCapacity() <= 0)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "Event capacity must be greater than 0 before publishing");

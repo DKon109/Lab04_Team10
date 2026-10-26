@@ -1221,6 +1221,26 @@ class SeatingIntegrationTest {
     }
 
     @Test
+    void eventWithBlankVenueCannotBePublished() {
+        var event = events.findById(eventId).orElseThrow();
+        event.setVenue("  ");
+        events.saveAndFlush(event);
+
+        var error = assertThrows(
+                ResponseStatusException.class,
+                () -> eventService.changeEventStatus(
+                        eventId, "published", ownerEmail
+                )
+        );
+
+        assertEquals(409, error.getStatusCode().value());
+        assertEquals(
+                EventStatus.DRAFT,
+                events.findById(eventId).orElseThrow().getStatus()
+        );
+    }
+
+    @Test
     void closingEventWithGeneratedLayoutRejectsNewBookings() {
         var map = frontStageTemplates.generate(
                 new FrontStageTemplateRequest(
