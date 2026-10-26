@@ -366,6 +366,52 @@ class SeatingIntegrationTest {
         assertEquals(400, assertThrows(ResponseStatusException.class,
                 () -> managedSeating.saveMap(eventId, ownerEmail, request)).getStatusCode().value());
     }
+    @Test
+    void invalidManagedMapUpdatePreservesSavedMap() {
+        var original = managedSeating.saveMap(
+                eventId, ownerEmail, managedMap(true)
+        );
+        Integer originalCapacity = events.findById(eventId)
+                .orElseThrow().getCapacity();
+
+        var first = new SeatMapRequest.SeatRequest(
+                "A1", "A1", null, "Main", "A", 0, 1,
+                0, 0, false, false, false, List.of("STANDARD")
+        );
+        var duplicate = new SeatMapRequest.SeatRequest(
+                "a1", "Duplicate A1", null, "Main", "A", 0, 2,
+                10, 0, false, false, false, List.of("STANDARD")
+        );
+        var invalid = new SeatMapRequest(
+                "Invalid replacement", false, true, false,
+                Map.of("STANDARD", 2),
+                List.of(new SeatMapRequest.ElementRequest(
+                        "replacement-row", SeatingElementType.ROW,
+                        "Replacement row", null,
+                        0, 0, 0, 0, false,
+                        List.of(first, duplicate)
+                ))
+        );
+
+        var error = assertThrows(
+                ResponseStatusException.class,
+                () -> managedSeating.saveMap(eventId, ownerEmail, invalid)
+        );
+        assertEquals(400, error.getStatusCode().value());
+
+        // Reload persisted data after the rejected replacement.
+        entityManager.flush();
+        entityManager.clear();
+
+        assertEquals(
+                original,
+                managedSeating.organiserMap(eventId, ownerEmail)
+        );
+        var unchanged = events.findById(eventId).orElseThrow();
+        assertEquals(originalCapacity, unchanged.getCapacity());
+        assertTrue(unchanged.isSeatIdentifiersConfirmed());
+    }
+
     @Test void organiserCanAssignMoveAndRemoveAConfirmedBookingSeat() {
         managedSeating.saveMap(eventId, ownerEmail, managedMap(false));
         publish();
