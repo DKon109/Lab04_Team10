@@ -1,6 +1,6 @@
 # Event and Venue Backend Handoff
 
-Last updated: 26 October 2026
+Last updated: 27 October 2026
 
 ## Responsibilities
 
@@ -32,6 +32,27 @@ shared DTOs, entities and services before editing them.
 - Closing an event also closes registration.
 - Follow the existing seating API contract for layout configuration.
 - Campus demo profiles must not be treated as verified physical layouts.
+
+## SCRUM-45 contract review record
+
+Prepared against Ryoji `a067c20` on 27 October 2026. These are implemented
+rules submitted for review, not recorded approvals. Reviewers should confirm
+each applicable row or identify a concrete mismatch in the linked contract.
+
+| Decision area | Implemented rule and reference | Requested reviewer | Confirmation |
+| --- | --- | --- | --- |
+| Event API and lifecycle | Routes, full update payload, errors and lowercase draft/published/closed values are documented in [event API notes](../INTEGRATION_NOTES.md). Only draft-to-published and published-to-closed transitions are allowed. | Aadi | Not yet recorded |
+| Ownership and historical data | Ownership comes from the authenticated organiser, not a client field or display-name match. Historical data must not receive guessed owners or fabricated checkout records. See [event API notes](../INTEGRATION_NOTES.md), [mock checkout](MOCK_CHECKOUT_API.md) and [ERD](ERD.md). | Sathish | Not yet recorded |
+| Seat representation | Campus and external generators return SeatMapRequest; managed save/read uses the shared map API. Seat codes, elements, sections, rows, coordinates, blocked/accessibility information and capacity are preserved. Legacy /seating is a separate grid contract. See [managed maps](SEATING_MAP_MANAGEMENT_API.md). | Aadi and Rafly | Not yet recorded |
+| Adjacency and constraints | Contiguous row groups remain within the same element, section and row; aisles separate sections and blocked seats are excluded. Accessibility constraints remain in the allocation input. See [allocation contract](SEATING_API.md). | Rafly | Not yet recorded |
+| Edits after publication | Event details are draft-only; map replacement is blocked after publication or bookings/allocation. Explicit booking-seat moves are a separate supported operation, not permission to replace the layout. | Aadi, Sathish and Rafly | Not yet recorded |
+| Closure and pending payment | Closure rejects new successful checkout; an earlier successful checkout is preserved and an identical retry returns its existing result. PENDING_ALLOCATION is a confirmed booking, not pending payment. Real asynchronous payments are outside the mock contract. See the closure evidence below. | Sathish | Not yet recorded |
+| Capacity versus seat reservation | Successful mock checkout reserves booking capacity; declined/cancelled outcomes do not. Checkout does not reserve a specific physical seat. Later seat choice, when enabled, requires successful checkout and rejects blocked/occupied seats; allocation otherwise assigns seats after closure. | Sathish and Rafly | Not yet recorded |
+
+The contract package is ready for In Review. Done requires recording the
+reviewers' responses and resolving any identified disagreements. A missing
+approval is not evidence that the corresponding implementation is absent.
+No confirmation request has been sent separately by the assistant.
 
 ## Persistence regression test
 
