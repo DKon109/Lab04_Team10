@@ -407,8 +407,8 @@ Reproduce the related regression run from `app` with:
 | Aadi, with Ryoji | Connect the managed campus/external template endpoints to selection/preview and confirm response/error handling. The current wizard still saves through legacy `/seating`. | Managed template preview/save consistency is not yet demonstrated in the UI. |
 | Ryoji, with the team | Resolve physical layout/accessibility evidence or explicitly agree a revised demonstration scope. Assumed Everest accessible positions remain labelled assumptions. | Do not claim verified physical campus journeys from the current demo data. |
 | Sathish, with Ryoji | Confirm existing-data setup and the documented closure/retry rules; record any required migration decision. | Configuration and tests alone do not prove team agreement or compatibility with every existing database. |
-| Rafly, with Ryoji | Confirm the representative venue fixtures used for the persisted benchmark and link the corresponding results. | Do not infer a measured campus/external benchmark from unit tests or runtime fields alone. |
-| Tejas and Aadi, with Ryoji/Sathish/Rafly | Record the integrated campus/external and general-admission journeys against an identified shared commit. | SCRUM-67 end-to-end completion remains unverified. |
+| Rafly, with Ryoji | Review the fixture coverage of the 20-case persisted benchmark rerun recorded below. | The measured synthetic fixtures do not establish performance for every physical campus layout. |
+| Tejas and Aadi, with Ryoji/Sathish/Rafly | Extend the recorded general-admission and small external assigned-seat journeys to the managed template selection/preview workflow. | Local journey evidence is available below; full managed campus/external UI coverage remains unverified. |
 | Ryoji and affected reviewers | Review this handoff and the follow-up commits; record API/data decisions in the PR or linked issues. | SCRUM-68's final agreed/reviewed handoff condition is pending. |
 
 The table is a handoff of owned dependencies, not a transfer of frontend,
@@ -487,23 +487,63 @@ Observed sequence:
    successful transition was not independently observed. This checks the
    client-side guard only, not a server publication error response.
 
-### UI defects to coordinate
+9. In a follow-up after the `0ef44e0` documentation commit, the user ran
+   allocation for this closed general-admission event. My bookings then
+   showed ALLOCATED. The owner opened `/bookings/1/ticket`: it showed
+   `You're ready to go.`, `ADMISSION General admission`, and the same
+   booking reference, with no assigned seat number or allocation-pending
+   message. This completes the observed general-admission finalisation path.
+
+The allocation action also finalises general-admission bookings:
+`SeatingService.allocate` calls `assignSeat(null, null)` for confirmed
+bookings when physical identifiers are not confirmed. No physical seat is
+assigned. The earlier interpretation that this action was an unnecessary
+or broken general-admission step was incorrect.
+
+### UI wording to coordinate
 
 | Owner | Reproduction and observed result | Expected behaviour |
 | --- | --- | --- |
-| Tejas | For this general-admission booking, checkout confirmation says seat allocation is pending; My bookings says AWAITING SEAT ALLOCATION; the ticket says to wait for closure/allocation while also stating that no physical seats are assigned. The message remains after closure. | Use general-admission-specific confirmation/status text consistently. Check BookingPage.jsx, MyBookingsPage.jsx and TicketAndSeatMapView.jsx. |
-| Aadi | Closing this general-admission event shows Ready for allocation and a Run allocation button. The button was not exercised. | Make the general-admission next step explicit and avoid implying that physical seat assignment is required. Check EventSeatingPage.jsx with the agreed allocation contract. |
+| Tejas | Before finalisation, general-admission checkout, booking-list and ticket text refer to pending seat allocation. After the action, the ticket correctly shows General admission without a seat number or pending message; My bookings uses ALLOCATED. | Explain general-admission finalisation consistently without suggesting a physical seat will be assigned. Check BookingPage.jsx, MyBookingsPage.jsx and TicketAndSeatMapView.jsx. |
+| Aadi | Closing this general-admission event shows Ready for allocation and Run allocation. Exercising the action successfully finalised the ticket without assigning a seat. | Clarify the general-admission action label or explanation while preserving the required finalisation action. Check EventSeatingPage.jsx with the allocation contract. |
 
 No frontend changes were made as part of this walkthrough. These are
-handoff findings; they have not yet been sent to the owners or resolved.
+wording findings; they have not yet been sent to the owners or resolved.
+They do not demonstrate a failure to finalise general-admission tickets.
 The earlier observation of `/events` did not establish a redirect; step 5
 records the subsequently verified direct navigation. No checkout POST was
 submitted in that step and no HTTP status was captured. Backend rejection
 of booking requests after closure is covered by the separate automated
-regression evidence above. Live publication-validation error handling,
-broader assigned-seat journeys and managed template consumption still require their
-own UI evidence; this walkthrough does not establish full SCRUM-50/51/67
+regression evidence above. Publication-error recovery is recorded below.
+Broader assigned-seat journeys and managed template consumption still require
+their own UI evidence; this walkthrough does not establish full SCRUM-50/51/67
 completion.
+
+## Publication validation error and recovery — 27 October 2026
+
+Reference checkout: Ryoji `0ef44e0`, local development backend and Safari.
+Event `33`, `SCRUM-50 Publication Error Recovery`, was created through the
+authenticated organiser API as a draft with capacity 12, confirmed identifiers
+and no saved layout. This is a synthetic test fixture, not physical venue
+verification or evidence of draft creation through the wizard.
+
+1. On `/organiser/events/33`, the user pressed Publish saved event.
+   The screen displayed `Save the seating layout before publishing an
+   assigned-seating event`. Status remained Draft, with 0 / 12 bookings
+   and no saved map. This verifies display of the server's publication
+   validation message; the HTTP status was not captured in this UI check.
+2. The user was instructed to save a Front stage layout with 3 rows,
+   4 seats per row and no aisle, retaining identifier confirmation, and
+   retry publication. The subsequent observed screen showed
+   `Event published. Attendees can now book.`, Published, 0 / 12 bookings,
+   Assigned Seats and a saved seat map.
+3. The venue form was replaced by Locked venue configuration, and the
+   available lifecycle action became Close registration. No application
+   code change was needed to recover from the validation failure.
+
+This closes the missing-layout publication-error/recovery UI evidence gap.
+It does not cover every validation message or the separate managed-template
+selection workflow. General-admission wording coordination remains as above.
 
 ## Local assigned-seat walkthrough — 27 October 2026
 
