@@ -130,6 +130,25 @@ It does not verify application restart or physical seating layouts.
 - Tests cover seat count, unique codes, missing seats and rows,
   organiser-only access, and database reload after saving.
 
+### SCRUM-64 review boundary
+
+The catalogue currently contains three implemented templates: Everest,
+Reginald and York. Source links, stable seat codes, row/section structure,
+validation and save/reload evidence are documented in this handoff.
+
+This is not yet evidence of three fully verified physical room maps.
+Everest A12/A26 are labelled demonstration accessibility assumptions;
+Reginald and York accessibility remains unverified, and coordinates are
+schematic. Passing persistence tests does not verify those physical facts.
+
+On 27 October 2026, Ryoji confirmed that the team had already agreed to
+accept source-based demonstration templates with the limitations above.
+This records Ryoji's confirmation of the agreed scope; it does not certify
+physical accessibility or measured room geometry. Review SCRUM-64 against
+that agreed demonstration scope and retain the assumption labels and
+unconfirmed identifier defaults. The implementation and recorded test
+evidence are ready for In Review under this scope.
+
 ### Reginald layout details
 
 - Seat numbering follows the official Reginald seating plan:
