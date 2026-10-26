@@ -106,7 +106,8 @@ class SeatingIntegrationTest {
                 .header("Authorization", "Bearer " + tokens.issueToken(owner).token()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.percentageGroupsTogether").value(100.0))
                 .andExpect(jsonPath("$.duplicateAllocationCount").value(0))
-                .andExpect(jsonPath("$.averageGroupContiguityPercentage").value(100.0));
+                .andExpect(jsonPath("$.averageGroupContiguityPercentage").value(100.0))
+                .andExpect(jsonPath("$.elapsedMillis").value(run.getElapsedMillis()));
         mvc.perform(get("/api/organiser/events/{id}/allocation/metrics", eventId))
                 .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/organiser/events/{id}/allocation/metrics", eventId)
