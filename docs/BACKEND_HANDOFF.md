@@ -476,6 +476,16 @@ Observed sequence:
    belongs to the first attendee. The page displayed `Booking not found`
    without the event details or booking reference. The owner had previously
    been able to view this ticket after closure; the second attendee could not.
+7. The user reported that opening `/organiser/events/31` as the second
+   attendee returned them to `/events`. This is UI route-guard evidence;
+   backend authorisation is covered separately by automated tests.
+8. In a second organiser wizard, step 3 showed the unnumbered Woolley demo
+   option and General admission / Group allocated modes. After instructions
+   to select Group allocated without confirming physical identifiers, the
+   user reported that Next would not proceed. The exact error text was not
+   captured. Switching back to General admission was requested, but its
+   successful transition was not independently observed. This checks the
+   client-side guard only, not a server publication error response.
 
 ### UI defects to coordinate
 
