@@ -501,6 +501,43 @@ records the subsequently verified direct navigation. No checkout POST was
 submitted in that step and no HTTP status was captured. Backend rejection
 of booking requests after closure is covered by the separate automated
 regression evidence above. Live publication-validation error handling,
-assigned-seat journeys and managed template consumption still require their
+broader assigned-seat journeys and managed template consumption still require their
 own UI evidence; this walkthrough does not establish full SCRUM-50/51/67
 completion.
+
+## Local assigned-seat walkthrough — 27 October 2026
+
+Reference checkout: Ryoji `2ef13fd`; local development backend and Safari.
+Event `32`, `SCRUM-67 Assigned Seating Check`, 1 November at 19:00,
+venue `Demo`, organiser USYD Coding Society. The wizard used an external
+Front stage layout with 3 rows and 4 seats per row, Group allocated mode,
+and confirmation that temporary physical identifiers would be installed.
+This was a synthetic demonstration, not verification of a physical venue.
+The wizard uses the legacy seating endpoint; this does not verify managed
+template API consumption.
+
+- Publication succeeded and the dashboard displayed Published.
+- The first attendee created a group through successful mock checkout;
+  the second attendee joined that same group through a separate successful
+  mock checkout. No real payment was made.
+- After registration closure and allocation, management showed Closed,
+  2 / 12 confirmed bookings, 2 tickets ready and 0 split groups.
+- The first attendee's ticket showed A1 and highlighted A1 on the map;
+  the second showed A2 and highlighted A2. Both maps showed three rows,
+  four seats per row and layout version 1. The group occupied adjacent,
+  distinct seats.
+- Downloaded `event-32-allocation.csv` contained two data rows matching
+  the tickets: BKG-4E8CAE1BE6A11688 / A1 and
+  BKG-8683908F61A14DFF / A2, both in GRP-DC7EF86F9603266D.
+  Both split_reason values were empty. Columns were booking_reference,
+  group_reference, seat and split_reason; no names or email addresses
+  were present. References remain linkable identifiers, so this verifies
+  omission of direct personal details rather than irreversible anonymity.
+
+This provides manual evidence for one small external assigned-seat journey,
+including ticket/map consistency and CSV output. The displayed 49 ms is
+one recorded run for two bookings, not a 300-seat/10-second benchmark.
+Printable output, process-restart persistence, other template families and
+verified physical campus journeys were not exercised in this walkthrough.
+The general-admission UI findings above remain unresolved; full SCRUM-67
+completion and team review are not asserted.
