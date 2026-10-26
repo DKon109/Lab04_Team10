@@ -74,7 +74,7 @@ It does not verify application restart or physical seating layouts.
 
 ## Campus venue templates
 
-- Ryoji is implementing the campus venue catalogue using the existing
+- Ryoji's campus venue catalogue uses the existing
   managed seating map format.
 - `GET /api/organiser/venue-templates` requires a bearer token with
   the `COMMITTEE_MEMBER` role.
@@ -302,3 +302,119 @@ Regression coverage:
     behaviour matches the agreed mock-payment rules.
 - Verify Aadi's create/edit/preview/publish/close workflow against
   the backend, including display of server validation errors.
+
+## Template integration contract and examples
+
+The following describes the implemented contract on Ryoji at `94cff70`,
+including merged main commit `5a1488c`. It is not evidence that all
+downstream consumers have signed off on this contract.
+
+All three template endpoints require a COMMITTEE_MEMBER bearer token.
+They return HTTP 200 and do not save or publish an event:
+
+| Method and endpoint | Request | Response |
+| --- | --- | --- |
+| GET `/api/organiser/venue-templates` | No body | Array of `{id, name, sourceUrl, map}` catalogue entries |
+| POST `/api/organiser/venue-templates/front-stage` | Front-stage example above | A `SeatMapRequest` object |
+| POST `/api/organiser/venue-templates/external` | Example below | A `SeatMapRequest` object |
+
+```json
+{
+  "name": "External integration fixture",
+  "template": "FAN",
+  "rows": 3,
+  "seatsPerRow": 4,
+  "aisleAfter": 2,
+  "blockedCodes": ["C4"],
+  "accessibleCodes": ["A1"]
+}
+```
+
+Expected generated response properties for this fixture are 12 seats,
+six row elements, STANDARD capacity 11, accessible A1, blocked C4,
+`identifiersConfirmed: false`, `attendeesChooseSeats: false` and
+`autoMatchTicketCapacities: true`. FRONT and CENTRAL accept the same
+fixture with the corresponding template value; their coordinates differ.
+Use the full generated object, not just these properties, when saving.
+
+For a campus selection, save the catalogue entry's `map`; for an external
+selection, save the generated response directly. Both use PUT
+`/api/organiser/events/{eventId}/seat-map`. Its response is a `SeatMapView`
+with the saved version, elements, seat status and ticket capacities.
+See [the complete managed-map request example and response fields](SEATING_MAP_MANAGEMENT_API.md).
+Do not interchange this object with the legacy `/seating` grid payload.
+Do not infer physical confirmation from successful generation or saving.
+
+| Result | Handling |
+| --- | --- |
+| 400 | Correct invalid input; external generators reject unknown/duplicate seat codes, overlapping flags, invalid aisle positions and unusable layouts. |
+| 401 | Obtain valid authentication before retrying. |
+| 403 | Require the organiser role; saving additionally requires event ownership. |
+| 404 | Check the event/map identifier when accessing a saved map. |
+| 409 | Resolve lifecycle or booking/allocation locks before editing a map. Do not silently overwrite or create another event. |
+
+Event lifecycle and ownership errors are documented in
+[event management integration notes](../INTEGRATION_NOTES.md).
+Publishing uses PATCH `/api/events/{id}/status` with
+`{"status":"published"}`; closing uses `{"status":"closed"}`.
+Publishing requires a future event date and a saved layout when physical
+identifiers are confirmed. Closing also closes registration.
+
+## Data setup and shared-file ownership
+
+- Campus templates are generated from code; these template changes add
+  no database entity or separate migration. Saving uses the existing
+  managed-map tables shown in [the shared ERD](ERD.md).
+- Development uses DB_URL, DB_USERNAME and DB_PASSWORD and currently
+  sets Hibernate `ddl-auto=update`. This is the repository configuration,
+  not a claim that an existing-data migration has been reviewed.
+- Tests use TEST_DB_URL, TEST_DB_USERNAME and TEST_DB_PASSWORD and
+  `ddl-auto=create-drop`. Use only the dedicated disposable test database.
+- Committee accounts need a society_name matching the event organiser.
+  See the existing-data setup notes in [INTEGRATION_NOTES.md](../INTEGRATION_NOTES.md).
+- Ryoji maintains template controllers, generators, validation evidence
+  and this handoff. Aadi owns organiser UI and preview consumption;
+  Tejas owns attendee UI and end-to-end coordination; Rafly owns
+  allocation, metrics and outputs; Sathish owns booking/payment and
+  database/schema coordination. Coordinate shared DTO/entity/service
+  changes with the affected owner rather than adding parallel formats.
+
+## Review and verification references
+
+| Evidence | Scope and result |
+| --- | --- |
+| [PR #20](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/pull/20) | Merged event/venue backend work, campus and external templates and earlier integration coverage. |
+| [PR #16](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/pull/16) | Merged organiser UI; does not establish that the managed template endpoints are connected. |
+| [PR #21](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/pull/21) | Merged runtime metrics and anonymous printable seating output. See [allocation/output contract](SEAT_ALLOCATION_AND_OUTPUTS.md). |
+| [e5cfe9a](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/commit/e5cfe9a) | Invalid managed-map replacement preserves the original map and event settings. Related template/seating suite: 84 passed on 26 October. |
+| [66bbc49](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/commit/66bbc49) | Six committed-transaction persistence cases passed on 26 October; campus IDs and external fixture are defined in VenueTemplatePersistenceTest. |
+| [94cff70](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/commit/94cff70) | Documents those persistence guarantees and their limits. |
+
+The three follow-up commits above are on Ryoji; their review/merge is
+separate from the already merged PR #20. The 84-case result and six-case
+result are separate runs, not a claimed single full-suite execution.
+Reproduce the related regression run from `app` with:
+
+```bash
+./mvnw -o -Dtest=SeatingIntegrationTest,ExternalVenueTemplateServiceTest,FrontStageTemplateServiceTest,CampusVenueTemplateServiceTest test
+./mvnw -o -Dtest=VenueTemplatePersistenceTest test
+```
+
+## Outstanding decisions and completion boundary
+
+| Owner / coordination | Outstanding item | Impact |
+| --- | --- | --- |
+| Aadi, with Ryoji | Connect the managed campus/external template endpoints to selection/preview and confirm response/error handling. The current wizard still saves through legacy `/seating`. | Managed template preview/save consistency is not yet demonstrated in the UI. |
+| Ryoji, with the team | Resolve physical layout/accessibility evidence or explicitly agree a revised demonstration scope. Assumed Everest accessible positions remain labelled assumptions. | Do not claim verified physical campus journeys from the current demo data. |
+| Sathish, with Ryoji | Confirm existing-data setup and the documented closure/retry rules; record any required migration decision. | Configuration and tests alone do not prove team agreement or compatibility with every existing database. |
+| Rafly, with Ryoji | Confirm the representative venue fixtures used for the persisted benchmark and link the corresponding results. | Do not infer a measured campus/external benchmark from unit tests or runtime fields alone. |
+| Tejas and Aadi, with Ryoji/Sathish/Rafly | Record the integrated campus/external and general-admission journeys against an identified shared commit. | SCRUM-67 end-to-end completion remains unverified. |
+| Ryoji and affected reviewers | Review this handoff and the follow-up commits; record API/data decisions in the PR or linked issues. | SCRUM-68's final agreed/reviewed handoff condition is pending. |
+
+The table is a handoff of owned dependencies, not a transfer of frontend,
+allocation or payment implementation to Ryoji. Missing required Sprint 3
+integration and physical-evidence conditions must not be relabelled as
+Final hardening. Additional Final work can include broader browser and
+environment coverage, repeatability checks and presentation polish after
+the required journeys are established. This handoff is ready for review;
+it does not assert that SCRUM-67 or SCRUM-68 is Done.
