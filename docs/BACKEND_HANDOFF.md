@@ -652,6 +652,41 @@ campus journeys were not exercised in this walkthrough.
 The general-admission UI findings above remain unresolved; full SCRUM-67
 completion and team review are not asserted.
 
+## Campus demonstration journey regression — 27 October 2026
+
+Under the agreed SCRUM-64 demonstration scope, the parameterized test
+`campusDemoJourneyPreservesGroupsPrivateTicketsAndOutputs` exercises
+Everest, Reginald and York separately. Each fixture saves a managed map,
+publishes the event, completes four successful mock checkouts in two
+groups, closes registration and allocates seats.
+
+After flushing and clearing the persistence context, it verifies four
+distinct valid seat codes, allocated private tickets with managed maps,
+closed event state, and booking references in CSV and printable output.
+Neither output contains attendee email addresses; the printable output
+also omits reusable group-join codes. Another attendee's ticket request
+returns 404. Allocation retry preserves the completion timestamp and CSV.
+Both groups have no reported splits. The original catalogue retains
+`identifiersConfirmed: false`; only the synthetic fixture confirms it.
+
+The focused three cases passed, followed by this related regression run
+on 27 October 2026 at 03:14 Sydney time:
+
+```bash
+./mvnw -Dtest=SeatingIntegrationTest,VenueTemplatePersistenceTest,CampusVenueTemplateServiceTest test
+```
+
+Result: 86 tests, no failures, errors or skips (74 seating integration,
+6 venue persistence, 6 campus template service). Maven time: 13.047 seconds.
+Reference: `88d5189` plus the uncommitted journey test added for SCRUM-67.
+
+This adds service/API integration evidence for the three agreed campus
+demo templates. It does not exercise their frontend selection/preview
+journey, verify physical accessibility, or test application restart.
+The existing six persistence tests separately verify committed map data
+across transactions. Remaining managed-template UI checks must be reviewed
+separately from this automated backend evidence.
+
 ## Benchmark evidence audit — 27 October 2026
 
 The existing local Surefire report for AllocationBenchmarkTest contains
