@@ -446,3 +446,43 @@ is an organiser assertion, not independent verification of a real venue.
 Existing demo accessibility assumptions remain explicitly unverified.
 Team agreement on shared lifecycle/database rules and UI error handling
 remains a review item; this evidence does not claim that agreement.
+
+## Local general-admission walkthrough — 27 October 2026
+
+Reference checkout: Ryoji `a723284`, local development backend and Safari
+frontend. This is a manual UI observation, not a new automated test run.
+Fixture: event `31`, `SCRUM-50 UI Check`, 1 November 2026 at 18:00,
+`Integration Test room`, Woolley demo subset (60 places), general admission.
+The demo room is illustrative, not a verified physical venue.
+
+Observed sequence:
+
+1. The organiser wizard previewed the event and published it. The dashboard
+   showed Published; management showed General Admission and locked venue
+   configuration. This wizard creates, saves the layout and publishes in
+   one submission; a separate draft-only save was not exercised.
+2. The attendee booking screen allowed only an individual booking and
+   explained that group seating requires confirmed physical identifiers.
+3. Mock checkout succeeded without a real charge. Booking `1`, reference
+   `BKG-D2F7867260BCD0C2`, appeared in My bookings and its private ticket page.
+4. The organiser management screen showed 1 / 60 confirmed bookings.
+   Confirming registration closure changed the event to Closed and retained
+   that count. The attendee could still open the same booking's ticket.
+
+### UI defects to coordinate
+
+| Owner | Reproduction and observed result | Expected behaviour |
+| --- | --- | --- |
+| Tejas | For this general-admission booking, checkout confirmation says seat allocation is pending; My bookings says AWAITING SEAT ALLOCATION; the ticket says to wait for closure/allocation while also stating that no physical seats are assigned. The message remains after closure. | Use general-admission-specific confirmation/status text consistently. Check BookingPage.jsx, MyBookingsPage.jsx and TicketAndSeatMapView.jsx. |
+| Aadi | Closing this general-admission event shows Ready for allocation and a Run allocation button. The button was not exercised. | Make the general-admission next step explicit and avoid implying that physical seat assignment is required. Check EventSeatingPage.jsx with the agreed allocation contract. |
+
+No frontend changes were made as part of this walkthrough. These are
+handoff findings; they have not yet been sent to the owners or resolved.
+After the user was asked to reopen `/events/31/book`, the observed page was
+`/events`; the navigation and HTTP response were not captured. Therefore
+this observation alone does not establish the reason for redirection or
+prove a rejected new booking request. Backend closure regression evidence
+is recorded separately above. Live validation-error handling, assigned-seat
+journeys, managed template consumption and new-booking rejection after
+closure still require their own UI evidence; this walkthrough does not
+establish full SCRUM-50/51/67 completion.
