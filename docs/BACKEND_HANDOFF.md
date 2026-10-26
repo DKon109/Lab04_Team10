@@ -418,3 +418,31 @@ Final hardening. Additional Final work can include broader browser and
 environment coverage, repeatability checks and presentation polish after
 the required journeys are established. This handoff is ready for review;
 it does not assert that SCRUM-67 or SCRUM-68 is Done.
+
+## SCRUM-66 publication and ownership verification
+
+Implementation reference: Ryoji commit `1223693`.
+
+| Acceptance area | Implementation and regression evidence |
+| --- | --- |
+| Protected event/layout changes | SecurityConfig restricts organiser routes to committee members. Services check event ownership. Tests cover unauthenticated callers, students, other organisers and managed-map deletion by a non-owner. |
+| Publication prerequisites | Publishing requires a future date, a nonblank venue, positive capacity and a saved layout when physical identifiers are confirmed. Regression tests include eventWithZeroCapacityCannotBePublished, eventWithBlankVenueCannotBePublished and assignedSeatingEventCannotBePublishedWithoutLayout. |
+| General admission versus assigned seating | Unconfirmed maps remain general admission. Seat assignment and group checkout require explicit physical identifier confirmation. Tests include unconfirmedManagedMapRemainsGeneralAdmissionAndRejectsSeatAssignments and groupRequiresConfirmedPhysicalIdentifiers. |
+| Changes after publication/bookings/allocation | Event editing is draft-only. Layout replacement is blocked after publication or when bookings/allocation exist. Existing tests cover published/closed event editing, published-map replacement/deletion and allocated-seat removal. |
+| Closure and existing bookings | Closing an event closes registration and rejects new bookings. Tests cover existing-booking preservation, successful checkout retries and both closure/checkout transaction orders. |
+
+Validation on 26 October 2026:
+138 tests passed, with no failures, errors or skipped tests.
+
+Run from the app directory against the dedicated test database:
+
+    ./mvnw -o -Dtest=SeatingIntegrationTest,LikesAndEventCreationApiTest,BookingControllerTest,MockCheckoutControllerTest,RegistrationClosureConcurrencyTest test
+
+The zero-capacity and blank-venue cases failed before their respective
+publication checks were added and passed after the fixes.
+
+These results verify backend behaviour. Physical identifier confirmation
+is an organiser assertion, not independent verification of a real venue.
+Existing demo accessibility assumptions remain explicitly unverified.
+Team agreement on shared lifecycle/database rules and UI error handling
+remains a review item; this evidence does not claim that agreement.
