@@ -537,7 +537,58 @@ template API consumption.
 This provides manual evidence for one small external assigned-seat journey,
 including ticket/map consistency and CSV output. The displayed 49 ms is
 one recorded run for two bookings, not a 300-seat/10-second benchmark.
-Printable output, process-restart persistence, other template families and
-verified physical campus journeys were not exercised in this walkthrough.
+The owner-authenticated printable endpoint for event 32 returned HTTP 200
+with HTML. Its diagram and table matched A1/P1 and A2/P2, with local group
+reference G1 and no names, emails or reusable group-join code. Safari's
+print preview showed the diagram and both table rows on one A4 portrait
+page at 100%, with no visible clipping. No physical print was performed.
+Process-restart persistence, other template families and verified physical
+campus journeys were not exercised in this walkthrough.
 The general-admission UI findings above remain unresolved; full SCRUM-67
 completion and team review are not asserted.
+
+## Benchmark evidence audit — 27 October 2026
+
+The existing local Surefire report for AllocationBenchmarkTest contains
+20 passing cases, no failures/errors/skips, and recorded allocation/flush
+times of 34–2322 ms. Its file modification time is 19 October 2026 at
+17:00 Sydney time; this timestamp is not a recorded Git revision. The
+report cannot establish performance of the current `c8e8b5e` checkout.
+
+The current test covers FRONT, FAN, CENTRAL, CAMPUS_DEMO, MANAGED and
+TABLES with DEFAULT and PREFER_SAME_ROW strategies. Counts include 300
+attendees, 280 for FAN and 48 for CAMPUS_DEMO. It times allocation through
+flush, then checks reloaded assignments, constraints and stored metrics;
+it does not time HTTP delivery or verify a restart or transaction commit.
+These synthetic fixtures do not establish that Everest, Reginald and York
+have been benchmarked. Rafly remains responsible for allocation and
+benchmark methodology; a current run and fixture correspondence should
+be recorded before claiming the remaining performance acceptance evidence.
+
+### Current-checkout rerun
+
+On 27 October 2026 at 02:25 Sydney time, the existing benchmark was rerun
+on `c8e8b5e` with documentation-only working changes:
+
+    ./mvnw -o -Dtest=AllocationBenchmarkTest test
+
+All 20 cases passed with no failures, errors or skips. Recorded
+allocation/flush times were 56–2351 ms, all below the per-case ten-second
+threshold. The test class took 30.341 seconds and the Maven run took
+32 seconds; these totals include multiple cases and setup and are not
+per-allocation timings. Environment: Java 24.0.2, Mac OS X aarch64,
+8 reported processors, MySQL dedicated test database.
+
+| Fixture family | Attendees | Cases | Allocation/flush range (ms) |
+| --- | --- | --- | --- |
+| FRONT | 300 | 4 | 554–2351 |
+| FAN | 280 | 2 | 559–1356 |
+| CENTRAL | 300 | 2 | 336–384 |
+| CAMPUS_DEMO | 48 | 2 | 56–57 |
+| MANAGED | 300 | 2 | 228–293 |
+| TABLES | 300 | 8 | 109–2142 |
+
+Source: local Surefire AllocationBenchmarkTest XML and its
+PERSISTED_BENCHMARK output. This supersedes the older report for current
+checkout performance evidence, but not the fixture/physical-venue limits
+above. No allocation algorithm or benchmark implementation was changed.
