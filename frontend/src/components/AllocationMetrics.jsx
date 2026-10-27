@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { request } from '../api/apiClient';
 
 export function AllocationMetrics({ eventId }) {
   const [loading, setLoading] = useState(false);
   const [metrics, setMetrics] = useState(null);
   const [error, setError] = useState(null);
+
+  // GAP 1 FIX: Reset metrics if the selected event changes so stale data doesn't show
+  useEffect(() => {
+    setMetrics(null);
+    setError(null);
+  }, [eventId]);
 
   const fetchMetrics = async () => {
     setLoading(true);
@@ -66,16 +72,23 @@ export function AllocationMetrics({ eventId }) {
       {metrics && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px', fontSize: '14px' }}>
           <div><strong>Groups Evaluated:</strong> {metrics.groupCount}</div>
-          <div><strong>Groups Kept Together:</strong> {metrics.percentageGroupsTogether}%</div>
+          <div><strong>Groups Kept Together:</strong> {metrics.percentageGroupsTogether != null ? `${metrics.percentageGroupsTogether}%` : 'Not applicable'}</div>
           <div><strong>Split Groups:</strong> {metrics.splitGroupCount}</div>
           <div><strong>Isolated Seats:</strong> {metrics.isolatedSeatCount}</div>
           <div><strong>Duplicates:</strong> {metrics.duplicateAllocationCount}</div>
+          
+          {/* GAP 2 FIX: New metrics from AllocationMetricsResponse */}
+          <div><strong>Avg Split Distance:</strong> {metrics.averageSplitDistance != null ? metrics.averageSplitDistance : 'Not applicable'}</div>
+          <div><strong>Avg Group Contiguity:</strong> {metrics.averageGroupContiguityPercentage != null ? `${metrics.averageGroupContiguityPercentage}%` : 'Not applicable'}</div>
+          <div><strong>Runtime:</strong> {metrics.elapsedMillis != null ? `${metrics.elapsedMillis} ms` : 'Not applicable'}</div>
         </div>
       )}
 
-      <button className="btn btn-primary" onClick={handleExport} style={{ marginTop: '16px', padding: '8px 16px' }} disabled={!metrics}>
-        Export Anonymous Seating Plan (CSV)
-      </button>
+      <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+        <button className="btn btn-primary" onClick={handleExport} style={{ padding: '8px 16px' }} disabled={!metrics}>
+          Export Anonymous Seating Plan (CSV)
+        </button>
+      </div>
     </div>
   );
 }

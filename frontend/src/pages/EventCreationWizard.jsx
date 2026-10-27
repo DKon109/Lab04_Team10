@@ -134,24 +134,34 @@ export function EventCreationWizard() {
         });
       }
 
-      // 2. Save the Seating Layout
+      // 2. Save the Seating Layout (Using the new Managed Map API for USYD rooms)
       const layout = draft.venueLayout;
-      await request(`/organiser/events/${currentId}/seating`, {
-        method: 'PUT',
-        body: {
-          source: layout.mode === 'external' ? 'EXTERNAL' : 'CAMPUS_DEMO',
-          roomId: layout.mode === 'usyd' ? layout.roomId : null,
-          template: layout.shape ? layout.shape.toUpperCase() : 'FRONT',
-          rows: layout.rows,
-          seatsPerRow: layout.seatsPerRow,
-          aisleAfter: 0,
-          blockedCodes: [],
-          accessibleCodes: [],
-          identifiersConfirmed: draft.seatingMode === 'general-admission' 
-            ? false 
-            : (layout.hasNumberedSeats ? true : draft.unnumberedConfirmed),
-        }
-      });
+      
+      if (layout.mode === 'usyd' && layout.map) {
+        // New campus template API
+        await request(`/organiser/events/${currentId}/seat-map`, {
+          method: 'PUT',
+          body: layout.map,
+        });
+      } else {
+        // Legacy external templates
+        await request(`/organiser/events/${currentId}/seating`, {
+          method: 'PUT',
+          body: {
+            source: 'EXTERNAL',
+            roomId: null,
+            template: layout.shape ? layout.shape.toUpperCase() : 'FRONT',
+            rows: layout.rows,
+            seatsPerRow: layout.seatsPerRow,
+            aisleAfter: 0,
+            blockedCodes: [],
+            accessibleCodes: [],
+            identifiersConfirmed: draft.seatingMode === 'general-admission' 
+              ? false 
+              : (layout.hasNumberedSeats ? true : draft.unnumberedConfirmed),
+          }
+        });
+      }
 
       // 3. Publish the Event
       await request(`/events/${currentId}/status`, {

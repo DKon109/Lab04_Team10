@@ -14,6 +14,7 @@ export function buildRoomLayout(room) {
     roomId: room.id,
     roomName: room.name,
     capacity: room.capacity,
+    map: room.map, // <--- GAP 4 FIX: Pass the new managed map object
     shape: room.shape,
     rows: room.rows,
     seatsPerRow: room.seatsPerRow,
@@ -56,20 +57,29 @@ export function VenuePicker({ value, onSelect }) {
     setLoading(true);
     setError(null);
     
-    request('/organiser/seating-profiles')
+    // GAP 4 FIX: Fetch from the new campus template endpoint
+    request('/organiser/venue-templates')
       .then((data) => {
         if (cancelled) return;
         if (data && data.length > 0) {
-          const mappedRooms = data.map(room => ({
-            id: room.id,
-            name: room.name,
-            building: room.notice || 'Campus Room',
-            capacity: room.rows * room.seatsPerRow,
-            rows: room.rows,
-            seatsPerRow: room.seatsPerRow,
-            hasNumberedSeats: false, // Set to false for unverified demo profiles
-            shape: room.template ? room.template.toLowerCase() : 'front'
-          }));
+          const mappedRooms = data.map(room => {
+            // Extract capacity and dimensions from the managed map if possible, fallback to defaults
+            const seatCount = room.map?.seats?.length || room.map?.capacity || 0;
+            const numRows = room.map?.rows?.length || Math.max(1, Math.ceil(seatCount / 15));
+            const numSeatsPerRow = room.map?.seatsPerRow || Math.ceil(seatCount / numRows) || 15;
+
+            return {
+              id: room.id,
+              name: room.name,
+              building: room.sourceUrl ? 'Verified Plan' : 'Campus Room',
+              capacity: seatCount,
+              map: room.map, // Keep the raw map data
+              rows: numRows,
+              seatsPerRow: numSeatsPerRow,
+              hasNumberedSeats: false, // Backend dictates this starts unverified
+              shape: 'front'
+            };
+          });
           setRealRooms(mappedRooms);
         } else {
           setRealRooms([]);
@@ -178,7 +188,7 @@ export function VenuePicker({ value, onSelect }) {
                       {r.building} · {r.capacity} seats
                     </span>
                     {r.hasNumberedSeats === false && (
-                      <span className="venue-card-flag">No numbered seats</span>
+                      <span className="venue-card-flag">Requires physical verification</span>
                     )}
                   </button>
                 );
