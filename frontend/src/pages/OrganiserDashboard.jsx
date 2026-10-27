@@ -18,6 +18,9 @@ export function OrganiserDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState({});
+  
+  // GAP 1 FIX: State for selecting which event's metrics to view
+  const [selectedMetricsEventId, setSelectedMetricsEventId] = useState('');
 
   const reload = useCallback(() => {
     let cancelled = false;
@@ -26,7 +29,13 @@ export function OrganiserDashboard() {
 
     fetchMyEvents({ status: statusFilter })
       .then((data) => {
-        if (!cancelled) setEvents(data || []);
+        if (!cancelled) {
+          setEvents(data || []);
+          // Auto-select the first event if none is selected
+          if (data && data.length > 0 && !selectedMetricsEventId) {
+            setSelectedMetricsEventId(data[0].id.toString());
+          }
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err.message || 'Failed to load events');
@@ -36,7 +45,7 @@ export function OrganiserDashboard() {
       });
 
     return () => { cancelled = true; };
-  }, [statusFilter]);
+  }, [statusFilter, selectedMetricsEventId]);
 
   useEffect(() => {
     const cancel = reload();
@@ -144,8 +153,28 @@ export function OrganiserDashboard() {
           </div>
         )}
 
+        {/* GAP 1 FIX: Event Selector for Metrics */}
         {!loading && !error && events.length > 0 && (
-          <AllocationMetrics eventId={events[0].id} />
+          <div style={{ marginTop: '30px', padding: '20px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--line)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
+              <label htmlFor="metrics-event-select" style={{ fontWeight: 'bold' }}>Select Event for Metrics:</label>
+              <select
+                id="metrics-event-select"
+                value={selectedMetricsEventId}
+                onChange={(e) => setSelectedMetricsEventId(e.target.value)}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid var(--line)' }}
+              >
+                <option value="" disabled>Select an event</option>
+                {events.map(ev => (
+                  <option key={ev.id} value={ev.id}>{ev.title}</option>
+                ))}
+              </select>
+            </div>
+            
+            {selectedMetricsEventId && (
+              <AllocationMetrics eventId={selectedMetricsEventId} />
+            )}
+          </div>
         )}
       </main>
     </>
