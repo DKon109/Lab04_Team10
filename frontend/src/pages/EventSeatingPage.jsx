@@ -34,26 +34,15 @@ export default function EventSeatingPage() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, 'Anonymous allocation CSV downloaded. No attendee names or emails are included.');
   }
-  
-  // GAP 3 FIX: Printable Seating Plan
   async function downloadPrint() {
     await action(async () => {
       const token = sessionStorage.getItem('tixora.token');
-      const response = await fetch(`/api/organiser/events/${eventId}/allocation/print`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
+      const response = await fetch(`/api/organiser/events/${eventId}/allocation/print`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (!response.ok) throw new Error('Failed to download printable plan');
-      
       const htmlText = await response.text();
       const blob = new Blob([htmlText], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a'); 
-      link.href = url; 
-      link.download = `event-${eventId}-seating-plan.html`; 
-      link.click();
+      const link = document.createElement('a'); link.href = url; link.download = `event-${eventId}-seating-plan.html`; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, 'Printable seating plan downloaded.');
   }
