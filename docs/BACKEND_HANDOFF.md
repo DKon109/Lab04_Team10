@@ -1,6 +1,6 @@
 # Event and Venue Backend Handoff
 
-Last updated: 23 October 2026
+Last updated: 27 October 2026
 
 ## Responsibilities
 
@@ -32,6 +32,27 @@ shared DTOs, entities and services before editing them.
 - Closing an event also closes registration.
 - Follow the existing seating API contract for layout configuration.
 - Campus demo profiles must not be treated as verified physical layouts.
+
+## SCRUM-45 contract review record
+
+Prepared against Ryoji `a067c20` on 27 October 2026. These are implemented
+rules submitted for review, not recorded approvals. Reviewers should confirm
+each applicable row or identify a concrete mismatch in the linked contract.
+
+| Decision area | Implemented rule and reference | Requested reviewer | Confirmation |
+| --- | --- | --- | --- |
+| Event API and lifecycle | Routes, full update payload, errors and lowercase draft/published/closed values are documented in [event API notes](../INTEGRATION_NOTES.md). Only draft-to-published and published-to-closed transitions are allowed. | Aadi | Not yet recorded |
+| Ownership and historical data | Ownership comes from the authenticated organiser, not a client field or display-name match. Historical data must not receive guessed owners or fabricated checkout records. See [event API notes](../INTEGRATION_NOTES.md), [mock checkout](MOCK_CHECKOUT_API.md) and [ERD](ERD.md). | Sathish | Not yet recorded |
+| Seat representation | Campus and external generators return SeatMapRequest; managed save/read uses the shared map API. Seat codes, elements, sections, rows, coordinates, blocked/accessibility information and capacity are preserved. Legacy /seating is a separate grid contract. See [managed maps](SEATING_MAP_MANAGEMENT_API.md). | Aadi and Rafly | Not yet recorded |
+| Adjacency and constraints | Contiguous row groups remain within the same element, section and row; aisles separate sections and blocked seats are excluded. Accessibility constraints remain in the allocation input. See [allocation contract](SEATING_API.md). | Rafly | Not yet recorded |
+| Edits after publication | Event details are draft-only; map replacement is blocked after publication or bookings/allocation. Explicit booking-seat moves are a separate supported operation, not permission to replace the layout. | Aadi, Sathish and Rafly | Not yet recorded |
+| Closure and pending payment | Closure rejects new successful checkout; an earlier successful checkout is preserved and an identical retry returns its existing result. PENDING_ALLOCATION is a confirmed booking, not pending payment. Real asynchronous payments are outside the mock contract. See the closure evidence below. | Sathish | Not yet recorded |
+| Capacity versus seat reservation | Successful mock checkout reserves booking capacity; declined/cancelled outcomes do not. Checkout does not reserve a specific physical seat. Later seat choice, when enabled, requires successful checkout and rejects blocked/occupied seats; allocation otherwise assigns seats after closure. | Sathish and Rafly | Not yet recorded |
+
+The contract package is ready for In Review. Done requires recording the
+reviewers' responses and resolving any identified disagreements. A missing
+approval is not evidence that the corresponding implementation is absent.
+No confirmation request has been sent separately by the assistant.
 
 ## Persistence regression test
 
@@ -74,7 +95,7 @@ It does not verify application restart or physical seating layouts.
 
 ## Campus venue templates
 
-- Ryoji is implementing the campus venue catalogue using the existing
+- Ryoji's campus venue catalogue uses the existing
   managed seating map format.
 - `GET /api/organiser/venue-templates` requires a bearer token with
   the `COMMITTEE_MEMBER` role.
@@ -108,6 +129,25 @@ It does not verify application restart or physical seating layouts.
   before treating the template as a confirmed seating layout.
 - Tests cover seat count, unique codes, missing seats and rows,
   organiser-only access, and database reload after saving.
+
+### SCRUM-64 review boundary
+
+The catalogue currently contains three implemented templates: Everest,
+Reginald and York. Source links, stable seat codes, row/section structure,
+validation and save/reload evidence are documented in this handoff.
+
+This is not yet evidence of three fully verified physical room maps.
+Everest A12/A26 are labelled demonstration accessibility assumptions;
+Reginald and York accessibility remains unverified, and coordinates are
+schematic. Passing persistence tests does not verify those physical facts.
+
+On 27 October 2026, Ryoji confirmed that the team had already agreed to
+accept source-based demonstration templates with the limitations above.
+This records Ryoji's confirmation of the agreed scope; it does not certify
+physical accessibility or measured room geometry. Review SCRUM-64 against
+that agreed demonstration scope and retain the assumption labels and
+unconfirmed identifier defaults. The implementation and recorded test
+evidence are ready for In Review under this scope.
 
 ### Reginald layout details
 
@@ -229,6 +269,37 @@ It does not verify application restart or physical seating layouts.
 - Frontend preview and template-selection integration still require
   coordination with Aadi; these backend tests do not verify the UI.
 
+## Venue persistence guarantees
+
+- Duplicate seat codes, including case-only differences such as
+  A1 and a1, are rejected when replacing a managed map.
+- Regression coverage verifies that this rejection preserves the
+  saved map, its version, seat data, ticket capacities, event capacity
+  and physical-identifier confirmation flag.
+- `VenueTemplatePersistenceTest` verifies Everest, Reginald, York,
+  FRONT, FAN and CENTRAL after the saving transaction commits.
+- A separate transaction reloads each map and checks that its saved
+  contents and event capacity are unchanged.
+- External-template checks also verify accessible seat A1, blocked
+  seat C4 and the resulting usable capacity.
+- Templates remain unconfirmed after saving and reloading.
+- These checks verify persistence across committed transactions,
+  not application restart, physical venue accuracy or frontend preview.
+- The test removes its committed fixture data in a finally block.
+
+Validation on 26 October 2026:
+
+- Seating and template regression suite: 84 tests passed.
+- `VenueTemplatePersistenceTest`: 6 tests passed in a separate run.
+
+Run the persistence checks from the app directory using the dedicated
+test database configuration:
+
+    ./mvnw -o -Dtest=VenueTemplatePersistenceTest test
+
+Frontend template selection, preview consistency and the complete
+organiser-to-attendee journey still require integration verification.
+
 ## Registration closure and mock checkout
 
 - Closing an event through the event status service also sets
@@ -271,3 +342,393 @@ Regression coverage:
     behaviour matches the agreed mock-payment rules.
 - Verify Aadi's create/edit/preview/publish/close workflow against
   the backend, including display of server validation errors.
+
+## Template integration contract and examples
+
+The following describes the implemented contract on Ryoji at `94cff70`,
+including merged main commit `5a1488c`. It is not evidence that all
+downstream consumers have signed off on this contract.
+
+All three template endpoints require a COMMITTEE_MEMBER bearer token.
+They return HTTP 200 and do not save or publish an event:
+
+| Method and endpoint | Request | Response |
+| --- | --- | --- |
+| GET `/api/organiser/venue-templates` | No body | Array of `{id, name, sourceUrl, map}` catalogue entries |
+| POST `/api/organiser/venue-templates/front-stage` | Front-stage example above | A `SeatMapRequest` object |
+| POST `/api/organiser/venue-templates/external` | Example below | A `SeatMapRequest` object |
+
+```json
+{
+  "name": "External integration fixture",
+  "template": "FAN",
+  "rows": 3,
+  "seatsPerRow": 4,
+  "aisleAfter": 2,
+  "blockedCodes": ["C4"],
+  "accessibleCodes": ["A1"]
+}
+```
+
+Expected generated response properties for this fixture are 12 seats,
+six row elements, STANDARD capacity 11, accessible A1, blocked C4,
+`identifiersConfirmed: false`, `attendeesChooseSeats: false` and
+`autoMatchTicketCapacities: true`. FRONT and CENTRAL accept the same
+fixture with the corresponding template value; their coordinates differ.
+Use the full generated object, not just these properties, when saving.
+
+For a campus selection, save the catalogue entry's `map`; for an external
+selection, save the generated response directly. Both use PUT
+`/api/organiser/events/{eventId}/seat-map`. Its response is a `SeatMapView`
+with the saved version, elements, seat status and ticket capacities.
+See [the complete managed-map request example and response fields](SEATING_MAP_MANAGEMENT_API.md).
+Do not interchange this object with the legacy `/seating` grid payload.
+Do not infer physical confirmation from successful generation or saving.
+
+| Result | Handling |
+| --- | --- |
+| 400 | Correct invalid input; external generators reject unknown/duplicate seat codes, overlapping flags, invalid aisle positions and unusable layouts. |
+| 401 | Obtain valid authentication before retrying. |
+| 403 | Require the organiser role; saving additionally requires event ownership. |
+| 404 | Check the event/map identifier when accessing a saved map. |
+| 409 | Resolve lifecycle or booking/allocation locks before editing a map. Do not silently overwrite or create another event. |
+
+Event lifecycle and ownership errors are documented in
+[event management integration notes](../INTEGRATION_NOTES.md).
+Publishing uses PATCH `/api/events/{id}/status` with
+`{"status":"published"}`; closing uses `{"status":"closed"}`.
+Publishing requires a future event date and a saved layout when physical
+identifiers are confirmed. Closing also closes registration.
+
+## Data setup and shared-file ownership
+
+- Campus templates are generated from code; these template changes add
+  no database entity or separate migration. Saving uses the existing
+  managed-map tables shown in [the shared ERD](ERD.md).
+- Development uses DB_URL, DB_USERNAME and DB_PASSWORD and currently
+  sets Hibernate `ddl-auto=update`. This is the repository configuration,
+  not a claim that an existing-data migration has been reviewed.
+- Tests use TEST_DB_URL, TEST_DB_USERNAME and TEST_DB_PASSWORD and
+  `ddl-auto=create-drop`. Use only the dedicated disposable test database.
+- Committee accounts need a society_name matching the event organiser.
+  See the existing-data setup notes in [INTEGRATION_NOTES.md](../INTEGRATION_NOTES.md).
+- Ryoji maintains template controllers, generators, validation evidence
+  and this handoff. Aadi owns organiser UI and preview consumption;
+  Tejas owns attendee UI and end-to-end coordination; Rafly owns
+  allocation, metrics and outputs; Sathish owns booking/payment and
+  database/schema coordination. Coordinate shared DTO/entity/service
+  changes with the affected owner rather than adding parallel formats.
+
+## Review and verification references
+
+| Evidence | Scope and result |
+| --- | --- |
+| [PR #20](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/pull/20) | Merged event/venue backend work, campus and external templates and earlier integration coverage. |
+| [PR #16](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/pull/16) | Merged organiser UI; does not establish that the managed template endpoints are connected. |
+| [PR #21](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/pull/21) | Merged runtime metrics and anonymous printable seating output. See [allocation/output contract](SEAT_ALLOCATION_AND_OUTPUTS.md). |
+| [e5cfe9a](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/commit/e5cfe9a) | Invalid managed-map replacement preserves the original map and event settings. Related template/seating suite: 84 passed on 26 October. |
+| [66bbc49](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/commit/66bbc49) | Six committed-transaction persistence cases passed on 26 October; campus IDs and external fixture are defined in VenueTemplatePersistenceTest. |
+| [94cff70](https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/commit/94cff70) | Documents those persistence guarantees and their limits. |
+
+The three follow-up commits above are on Ryoji; their review/merge is
+separate from the already merged PR #20. The 84-case result and six-case
+result are separate runs, not a claimed single full-suite execution.
+Reproduce the related regression run from `app` with:
+
+```bash
+./mvnw -o -Dtest=SeatingIntegrationTest,ExternalVenueTemplateServiceTest,FrontStageTemplateServiceTest,CampusVenueTemplateServiceTest test
+./mvnw -o -Dtest=VenueTemplatePersistenceTest test
+```
+
+## Outstanding decisions and completion boundary
+
+| Owner / coordination | Outstanding item | Impact |
+| --- | --- | --- |
+| Aadi, with Ryoji | Connect the managed campus/external template endpoints to selection/preview and confirm response/error handling. The current wizard still saves through legacy `/seating`. | Managed template preview/save consistency is not yet demonstrated in the UI. |
+| Ryoji, with the team | Resolve physical layout/accessibility evidence or explicitly agree a revised demonstration scope. Assumed Everest accessible positions remain labelled assumptions. | Do not claim verified physical campus journeys from the current demo data. |
+| Sathish, with Ryoji | Confirm existing-data setup and the documented closure/retry rules; record any required migration decision. | Configuration and tests alone do not prove team agreement or compatibility with every existing database. |
+| Rafly, with Ryoji | Review the fixture coverage of the 20-case persisted benchmark rerun recorded below. | The measured synthetic fixtures do not establish performance for every physical campus layout. |
+| Tejas and Aadi, with Ryoji/Sathish/Rafly | Extend the recorded general-admission and small external assigned-seat journeys to the managed template selection/preview workflow. | Local journey evidence is available below; full managed campus/external UI coverage remains unverified. |
+| Ryoji and affected reviewers | Review this handoff and the follow-up commits; record API/data decisions in the PR or linked issues. | SCRUM-68's final agreed/reviewed handoff condition is pending. |
+
+The table is a handoff of owned dependencies, not a transfer of frontend,
+allocation or payment implementation to Ryoji. Missing required Sprint 3
+integration and physical-evidence conditions must not be relabelled as
+Final hardening. Additional Final work can include broader browser and
+environment coverage, repeatability checks and presentation polish after
+the required journeys are established. This handoff is ready for review;
+it does not assert that SCRUM-67 or SCRUM-68 is Done.
+
+## SCRUM-66 publication and ownership verification
+
+Implementation reference: Ryoji commit `1223693`.
+
+| Acceptance area | Implementation and regression evidence |
+| --- | --- |
+| Protected event/layout changes | SecurityConfig restricts organiser routes to committee members. Services check event ownership. Tests cover unauthenticated callers, students, other organisers and managed-map deletion by a non-owner. |
+| Publication prerequisites | Publishing requires a future date, a nonblank venue, positive capacity and a saved layout when physical identifiers are confirmed. Regression tests include eventWithZeroCapacityCannotBePublished, eventWithBlankVenueCannotBePublished and assignedSeatingEventCannotBePublishedWithoutLayout. |
+| General admission versus assigned seating | Unconfirmed maps remain general admission. Seat assignment and group checkout require explicit physical identifier confirmation. Tests include unconfirmedManagedMapRemainsGeneralAdmissionAndRejectsSeatAssignments and groupRequiresConfirmedPhysicalIdentifiers. |
+| Changes after publication/bookings/allocation | Event editing is draft-only. Layout replacement is blocked after publication or when bookings/allocation exist. Existing tests cover published/closed event editing, published-map replacement/deletion and allocated-seat removal. |
+| Closure and existing bookings | Closing an event closes registration and rejects new bookings. Tests cover existing-booking preservation, successful checkout retries and both closure/checkout transaction orders. |
+
+Validation on 26 October 2026:
+138 tests passed, with no failures, errors or skipped tests.
+
+Run from the app directory against the dedicated test database:
+
+    ./mvnw -o -Dtest=SeatingIntegrationTest,LikesAndEventCreationApiTest,BookingControllerTest,MockCheckoutControllerTest,RegistrationClosureConcurrencyTest test
+
+The zero-capacity and blank-venue cases failed before their respective
+publication checks were added and passed after the fixes.
+
+These results verify backend behaviour. Physical identifier confirmation
+is an organiser assertion, not independent verification of a real venue.
+Existing demo accessibility assumptions remain explicitly unverified.
+Team agreement on shared lifecycle/database rules and UI error handling
+remains a review item; this evidence does not claim that agreement.
+
+## Local general-admission walkthrough — 27 October 2026
+
+Reference checkout: Ryoji `a723284`, local development backend and Safari
+frontend. This is a manual UI observation, not a new automated test run.
+Fixture: event `31`, `SCRUM-50 UI Check`, 1 November 2026 at 18:00,
+`Integration Test room`, Woolley demo subset (60 places), general admission.
+The demo room is illustrative, not a verified physical venue.
+
+Observed sequence:
+
+1. The organiser wizard previewed the event and published it. The dashboard
+   showed Published; management showed General Admission and locked venue
+   configuration. This wizard creates, saves the layout and publishes in
+   one submission; a separate draft-only save was not exercised.
+2. The attendee booking screen allowed only an individual booking and
+   explained that group seating requires confirmed physical identifiers.
+3. Mock checkout succeeded without a real charge. Booking `1`, reference
+   `BKG-D2F7867260BCD0C2`, appeared in My bookings and its private ticket page.
+4. The organiser management screen showed 1 / 60 confirmed bookings.
+   Confirming registration closure changed the event to Closed and retained
+   that count. The attendee could still open the same booking's ticket.
+5. A second attendee, `sprint3.friend@uni.sydney.edu.au`, directly opened
+   `/events/31/book` after closure. The page displayed `Event not found: 31`
+   and no booking form. This matches the public event lookup's restriction
+   to Published events and demonstrates that the UI blocks this booking path.
+6. The same second attendee directly opened `/bookings/1/ticket`, which
+   belongs to the first attendee. The page displayed `Booking not found`
+   without the event details or booking reference. The owner had previously
+   been able to view this ticket after closure; the second attendee could not.
+7. The user reported that opening `/organiser/events/31` as the second
+   attendee returned them to `/events`. This is UI route-guard evidence;
+   backend authorisation is covered separately by automated tests.
+8. In a second organiser wizard, step 3 showed the unnumbered Woolley demo
+   option and General admission / Group allocated modes. After instructions
+   to select Group allocated without confirming physical identifiers, the
+   user reported that Next would not proceed. The exact error text was not
+   captured. Switching back to General admission was requested, but its
+   successful transition was not independently observed. This checks the
+   client-side guard only, not a server publication error response.
+
+9. In a follow-up after the `0ef44e0` documentation commit, the user ran
+   allocation for this closed general-admission event. My bookings then
+   showed ALLOCATED. The owner opened `/bookings/1/ticket`: it showed
+   `You're ready to go.`, `ADMISSION General admission`, and the same
+   booking reference, with no assigned seat number or allocation-pending
+   message. This completes the observed general-admission finalisation path.
+
+The allocation action also finalises general-admission bookings:
+`SeatingService.allocate` calls `assignSeat(null, null)` for confirmed
+bookings when physical identifiers are not confirmed. No physical seat is
+assigned. The earlier interpretation that this action was an unnecessary
+or broken general-admission step was incorrect.
+
+### UI wording to coordinate
+
+| Owner | Reproduction and observed result | Expected behaviour |
+| --- | --- | --- |
+| Tejas | Before finalisation, general-admission checkout, booking-list and ticket text refer to pending seat allocation. After the action, the ticket correctly shows General admission without a seat number or pending message; My bookings uses ALLOCATED. | Explain general-admission finalisation consistently without suggesting a physical seat will be assigned. Check BookingPage.jsx, MyBookingsPage.jsx and TicketAndSeatMapView.jsx. |
+| Aadi | Closing this general-admission event shows Ready for allocation and Run allocation. Exercising the action successfully finalised the ticket without assigning a seat. | Clarify the general-admission action label or explanation while preserving the required finalisation action. Check EventSeatingPage.jsx with the allocation contract. |
+
+No frontend changes were made as part of this walkthrough. These are
+wording findings; they have not yet been sent to the owners or resolved.
+They do not demonstrate a failure to finalise general-admission tickets.
+The earlier observation of `/events` did not establish a redirect; step 5
+records the subsequently verified direct navigation. No checkout POST was
+submitted in that step and no HTTP status was captured. Backend rejection
+of booking requests after closure is covered by the separate automated
+regression evidence above. Publication-error recovery is recorded below.
+Broader assigned-seat journeys and managed template consumption still require
+their own UI evidence; this walkthrough does not establish full SCRUM-50/51/67
+completion.
+
+## Publication validation error and recovery — 27 October 2026
+
+Reference checkout: Ryoji `0ef44e0`, local development backend and Safari.
+Event `33`, `SCRUM-50 Publication Error Recovery`, was created through the
+authenticated organiser API as a draft with capacity 12, confirmed identifiers
+and no saved layout. This is a synthetic test fixture, not physical venue
+verification or evidence of draft creation through the wizard.
+
+1. On `/organiser/events/33`, the user pressed Publish saved event.
+   The screen displayed `Save the seating layout before publishing an
+   assigned-seating event`. Status remained Draft, with 0 / 12 bookings
+   and no saved map. This verifies display of the server's publication
+   validation message; the HTTP status was not captured in this UI check.
+2. The user was instructed to save a Front stage layout with 3 rows,
+   4 seats per row and no aisle, retaining identifier confirmation, and
+   retry publication. The subsequent observed screen showed
+   `Event published. Attendees can now book.`, Published, 0 / 12 bookings,
+   Assigned Seats and a saved seat map.
+3. The venue form was replaced by Locked venue configuration, and the
+   available lifecycle action became Close registration. No application
+   code change was needed to recover from the validation failure.
+
+This closes the missing-layout publication-error/recovery UI evidence gap.
+It does not cover every validation message or the separate managed-template
+selection workflow. General-admission wording coordination remains as above.
+
+## Draft editing, reload and publication — 27 October 2026
+
+Reference checkout: Ryoji `f03eb48`, local development backend and Safari.
+Event `34` was created through the organiser API as `SCRUM-50 Draft Edit
+Check`, capacity 12, general admission, without a saved layout.
+
+- The owner opened `/organiser/events/34/edit`, changed the title to
+  `SCRUM-50 Draft Edit Verified` and description to
+  `After edit: saved draft values must survive reload.`, then saved.
+- Management retained event ID 34 and Draft status. Reopening Edit event
+  details fetched the changed title and description and retained capacity
+  12. This verifies screen re-entry and retrieval, not an application restart.
+- The owner saved and pressed Publish saved event. Management showed
+  `Event published. Attendees can now book.`, Published, 0 / 12 bookings,
+  General Admission and locked venue configuration. No map was required
+  for this general-admission event.
+
+Together with event 31's creation/preview/closure journey, event 33's
+publication-error recovery, the persistence tests, DataSeederTest and
+closure/checkout regressions, this supplies the SCRUM-50 review evidence.
+The task is ready for In Review; final agreement on closure/payment rules
+remains with Sathish under the SCRUM-45 contract review. This does not
+claim completion of the separate managed-template selection UI or verified
+physical campus journeys. No application code changed during this check.
+
+## Local assigned-seat walkthrough — 27 October 2026
+
+Reference checkout: Ryoji `2ef13fd`; local development backend and Safari.
+Event `32`, `SCRUM-67 Assigned Seating Check`, 1 November at 19:00,
+venue `Demo`, organiser USYD Coding Society. The wizard used an external
+Front stage layout with 3 rows and 4 seats per row, Group allocated mode,
+and confirmation that temporary physical identifiers would be installed.
+This was a synthetic demonstration, not verification of a physical venue.
+The wizard uses the legacy seating endpoint; this does not verify managed
+template API consumption.
+
+- Publication succeeded and the dashboard displayed Published.
+- The first attendee created a group through successful mock checkout;
+  the second attendee joined that same group through a separate successful
+  mock checkout. No real payment was made.
+- After registration closure and allocation, management showed Closed,
+  2 / 12 confirmed bookings, 2 tickets ready and 0 split groups.
+- The first attendee's ticket showed A1 and highlighted A1 on the map;
+  the second showed A2 and highlighted A2. Both maps showed three rows,
+  four seats per row and layout version 1. The group occupied adjacent,
+  distinct seats.
+- Downloaded `event-32-allocation.csv` contained two data rows matching
+  the tickets: BKG-4E8CAE1BE6A11688 / A1 and
+  BKG-8683908F61A14DFF / A2, both in GRP-DC7EF86F9603266D.
+  Both split_reason values were empty. Columns were booking_reference,
+  group_reference, seat and split_reason; no names or email addresses
+  were present. References remain linkable identifiers, so this verifies
+  omission of direct personal details rather than irreversible anonymity.
+
+This provides manual evidence for one small external assigned-seat journey,
+including ticket/map consistency and CSV output. The displayed 49 ms is
+one recorded run for two bookings, not a 300-seat/10-second benchmark.
+The owner-authenticated printable endpoint for event 32 returned HTTP 200
+with HTML. Its diagram and table matched A1/P1 and A2/P2, with local group
+reference G1 and no names, emails or reusable group-join code. Safari's
+print preview showed the diagram and both table rows on one A4 portrait
+page at 100%, with no visible clipping. No physical print was performed.
+Process-restart persistence, other template families and verified physical
+campus journeys were not exercised in this walkthrough.
+The general-admission UI findings above remain unresolved; full SCRUM-67
+completion and team review are not asserted.
+
+## Campus demonstration journey regression — 27 October 2026
+
+Under the agreed SCRUM-64 demonstration scope, the parameterized test
+`campusDemoJourneyPreservesGroupsPrivateTicketsAndOutputs` exercises
+Everest, Reginald and York separately. Each fixture saves a managed map,
+publishes the event, completes four successful mock checkouts in two
+groups, closes registration and allocates seats.
+
+After flushing and clearing the persistence context, it verifies four
+distinct valid seat codes, allocated private tickets with managed maps,
+closed event state, and booking references in CSV and printable output.
+Neither output contains attendee email addresses; the printable output
+also omits reusable group-join codes. Another attendee's ticket request
+returns 404. Allocation retry preserves the completion timestamp and CSV.
+Both groups have no reported splits. The original catalogue retains
+`identifiersConfirmed: false`; only the synthetic fixture confirms it.
+
+The focused three cases passed, followed by this related regression run
+on 27 October 2026 at 03:14 Sydney time:
+
+```bash
+./mvnw -Dtest=SeatingIntegrationTest,VenueTemplatePersistenceTest,CampusVenueTemplateServiceTest test
+```
+
+Result: 86 tests, no failures, errors or skips (74 seating integration,
+6 venue persistence, 6 campus template service). Maven time: 13.047 seconds.
+Reference: `88d5189` plus the uncommitted journey test added for SCRUM-67.
+
+This adds service/API integration evidence for the three agreed campus
+demo templates. It does not exercise their frontend selection/preview
+journey, verify physical accessibility, or test application restart.
+The existing six persistence tests separately verify committed map data
+across transactions. Remaining managed-template UI checks must be reviewed
+separately from this automated backend evidence.
+
+## Benchmark evidence audit — 27 October 2026
+
+The existing local Surefire report for AllocationBenchmarkTest contains
+20 passing cases, no failures/errors/skips, and recorded allocation/flush
+times of 34–2322 ms. Its file modification time is 19 October 2026 at
+17:00 Sydney time; this timestamp is not a recorded Git revision. The
+report cannot establish performance of the current `c8e8b5e` checkout.
+
+The current test covers FRONT, FAN, CENTRAL, CAMPUS_DEMO, MANAGED and
+TABLES with DEFAULT and PREFER_SAME_ROW strategies. Counts include 300
+attendees, 280 for FAN and 48 for CAMPUS_DEMO. It times allocation through
+flush, then checks reloaded assignments, constraints and stored metrics;
+it does not time HTTP delivery or verify a restart or transaction commit.
+These synthetic fixtures do not establish that Everest, Reginald and York
+have been benchmarked. Rafly remains responsible for allocation and
+benchmark methodology; a current run and fixture correspondence should
+be recorded before claiming the remaining performance acceptance evidence.
+
+### Current-checkout rerun
+
+On 27 October 2026 at 02:25 Sydney time, the existing benchmark was rerun
+on `c8e8b5e` with documentation-only working changes:
+
+    ./mvnw -o -Dtest=AllocationBenchmarkTest test
+
+All 20 cases passed with no failures, errors or skips. Recorded
+allocation/flush times were 56–2351 ms, all below the per-case ten-second
+threshold. The test class took 30.341 seconds and the Maven run took
+32 seconds; these totals include multiple cases and setup and are not
+per-allocation timings. Environment: Java 24.0.2, Mac OS X aarch64,
+8 reported processors, MySQL dedicated test database.
+
+| Fixture family | Attendees | Cases | Allocation/flush range (ms) |
+| --- | --- | --- | --- |
+| FRONT | 300 | 4 | 554–2351 |
+| FAN | 280 | 2 | 559–1356 |
+| CENTRAL | 300 | 2 | 336–384 |
+| CAMPUS_DEMO | 48 | 2 | 56–57 |
+| MANAGED | 300 | 2 | 228–293 |
+| TABLES | 300 | 8 | 109–2142 |
+
+Source: local Surefire AllocationBenchmarkTest XML and its
+PERSISTED_BENCHMARK output. This supersedes the older report for current
+checkout performance evidence, but not the fixture/physical-venue limits
+above. No allocation algorithm or benchmark implementation was changed.
