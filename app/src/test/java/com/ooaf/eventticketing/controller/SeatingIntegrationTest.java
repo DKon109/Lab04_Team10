@@ -366,6 +366,52 @@ class SeatingIntegrationTest {
         assertEquals(400, assertThrows(ResponseStatusException.class,
                 () -> managedSeating.saveMap(eventId, ownerEmail, request)).getStatusCode().value());
     }
+    @Test
+    void invalidManagedMapUpdatePreservesSavedMap() {
+        var original = managedSeating.saveMap(
+                eventId, ownerEmail, managedMap(true)
+        );
+        Integer originalCapacity = events.findById(eventId)
+                .orElseThrow().getCapacity();
+
+        var first = new SeatMapRequest.SeatRequest(
+                "A1", "A1", null, "Main", "A", 0, 1,
+                0, 0, false, false, false, List.of("STANDARD")
+        );
+        var duplicate = new SeatMapRequest.SeatRequest(
+                "a1", "Duplicate A1", null, "Main", "A", 0, 2,
+                10, 0, false, false, false, List.of("STANDARD")
+        );
+        var invalid = new SeatMapRequest(
+                "Invalid replacement", false, true, false,
+                Map.of("STANDARD", 2),
+                List.of(new SeatMapRequest.ElementRequest(
+                        "replacement-row", SeatingElementType.ROW,
+                        "Replacement row", null,
+                        0, 0, 0, 0, false,
+                        List.of(first, duplicate)
+                ))
+        );
+
+        var error = assertThrows(
+                ResponseStatusException.class,
+                () -> managedSeating.saveMap(eventId, ownerEmail, invalid)
+        );
+        assertEquals(400, error.getStatusCode().value());
+
+        // Reload persisted data after the rejected replacement.
+        entityManager.flush();
+        entityManager.clear();
+
+        assertEquals(
+                original,
+                managedSeating.organiserMap(eventId, ownerEmail)
+        );
+        var unchanged = events.findById(eventId).orElseThrow();
+        assertEquals(originalCapacity, unchanged.getCapacity());
+        assertTrue(unchanged.isSeatIdentifiersConfirmed());
+    }
+
     @Test void organiserCanAssignMoveAndRemoveAConfirmedBookingSeat() {
         managedSeating.saveMap(eventId, ownerEmail, managedMap(false));
         publish();
@@ -938,6 +984,66 @@ class SeatingIntegrationTest {
         assertEquals(Boolean.FALSE, source.identifiersConfirmed());
     }
 
+    @ParameterizedTest
+    @CsvSource({"usyd-seymour-everest", "usyd-seymour-reginald", "usyd-seymour-york"})
+    void campusDemoJourneyPreservesGroupsPrivateTicketsAndOutputs(String templateId) throws Exception {
+        var source = campusTemplates.listTemplates().stream()
+                .filter(template -> templateId.equals(template.id()))
+                .findFirst().orElseThrow().map();
+        // Identifier confirmation applies only to this agreed demonstration fixture.
+        var demo = new SeatMapRequest(source.name(), false,
+                source.autoMatchTicketCapacities(), true,
+                source.ticketTypeCapacities(), source.elements());
+        managedSeating.saveMap(eventId, ownerEmail, demo);
+        publish();
+
+        String suffix = UUID.randomUUID().toString();
+        var third = users.saveAndFlush(new User("third-" + suffix + "@test.local", "unused", UserRole.STUDENT));
+        var fourth = users.saveAndFlush(new User("fourth-" + suffix + "@test.local", "unused", UserRole.STUDENT));
+        var firstBooking = book(studentEmail, true, null, false);
+        var secondBooking = book(friendEmail, false, firstBooking.groupCode(), false);
+        var thirdBooking = book(third.getEmail(), true, null, false);
+        var fourthBooking = book(fourth.getEmail(), false, thirdBooking.groupCode(), false);
+        var confirmed = List.of(firstBooking, secondBooking, thirdBooking, fourthBooking);
+        var emails = List.of(studentEmail, friendEmail, third.getEmail(), fourth.getEmail());
+        assertNotEquals(firstBooking.groupCode(), thirdBooking.groupCode());
+        close();
+        var allocation = seating.allocate(eventId, ownerEmail);
+        assertEquals(4, allocation.getBookingCount());
+        assertEquals(0, allocation.getSplitGroupCount());
+        var completedAt = allocation.getCompletedAt();
+        entityManager.flush();
+        entityManager.clear();
+
+        var validCodes = source.elements().stream()
+                .flatMap(element -> element.seats().stream())
+                .map(SeatMapRequest.SeatRequest::code).collect(Collectors.toSet());
+        Set<String> assigned = new HashSet<>();
+        String csv = seating.export(eventId, ownerEmail);
+        String printable = seating.printablePlan(eventId, ownerEmail);
+        for (int i = 0; i < confirmed.size(); i++) {
+            var booking = confirmed.get(i);
+            var ticket = seating.ticket(booking.id(), emails.get(i));
+            assertEquals(BookingStatus.ALLOCATED, ticket.booking().status());
+            assertNotNull(ticket.managedMap());
+            assertTrue(validCodes.contains(ticket.seatCode()));
+            assertTrue(assigned.add(ticket.seatCode()), "Each booking must have a distinct seat");
+            assertTrue(csv.contains(booking.bookingRef()));
+            assertTrue(printable.contains(booking.bookingRef()));
+            assertFalse(csv.contains(emails.get(i)));
+            assertFalse(printable.contains(emails.get(i)));
+            assertFalse(printable.contains(booking.groupCode()));
+        }
+        assertEquals("closed", seating.management(eventId, ownerEmail).event().getStatus());
+        assertEquals(completedAt, seating.allocate(eventId, ownerEmail).getCompletedAt());
+        assertEquals(csv, seating.export(eventId, ownerEmail));
+        assertEquals(Boolean.FALSE, source.identifiersConfirmed());
+        var otherAttendee = users.findByEmail(friendEmail).orElseThrow();
+        mvc.perform(get("/api/bookings/{id}/ticket", firstBooking.id())
+                .header("Authorization", "Bearer " + tokens.issueToken(otherAttendee).token()))
+                .andExpect(status().isNotFound());
+    }
+
     @Test
     void frontStageTemplateCanBeGeneratedOnlyByOrganisers() throws Exception {
         var owner = users.findByEmail(ownerEmail).orElseThrow();
@@ -1151,6 +1257,46 @@ class SeatingIntegrationTest {
         assertEquals(
                 EventRegistrationStatus.OPEN,
                 unchanged.getRegistrationStatus()
+        );
+    }
+
+    @Test
+    void eventWithZeroCapacityCannotBePublished() {
+        var event = events.findById(eventId).orElseThrow();
+        event.setCapacity(0);
+        events.saveAndFlush(event);
+
+        var error = assertThrows(
+                ResponseStatusException.class,
+                () -> eventService.changeEventStatus(
+                        eventId, "published", ownerEmail
+                )
+        );
+
+        assertEquals(409, error.getStatusCode().value());
+        assertEquals(
+                EventStatus.DRAFT,
+                events.findById(eventId).orElseThrow().getStatus()
+        );
+    }
+
+    @Test
+    void eventWithBlankVenueCannotBePublished() {
+        var event = events.findById(eventId).orElseThrow();
+        event.setVenue("  ");
+        events.saveAndFlush(event);
+
+        var error = assertThrows(
+                ResponseStatusException.class,
+                () -> eventService.changeEventStatus(
+                        eventId, "published", ownerEmail
+                )
+        );
+
+        assertEquals(409, error.getStatusCode().value());
+        assertEquals(
+                EventStatus.DRAFT,
+                events.findById(eventId).orElseThrow().getStatus()
         );
     }
 
