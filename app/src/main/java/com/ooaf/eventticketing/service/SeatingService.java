@@ -248,6 +248,7 @@ public class SeatingService {
             elements = map.elements().stream().map(element -> new AnonymousSeatingPlanRenderer.Element(
                     element.key(), element.label(), element.positionX(), element.positionY(), element.rotationDegrees(),
                     element.seats().stream().map(seat -> new AnonymousSeatingPlanRenderer.Seat(seat.code(),
+                            seat.rowLabel(), String.valueOf(seat.seatNumber()),
                             seat.positionX(), seat.positionY(), seat.accessible(),
                             seat.status() == SeatingMapManagementService.SeatStatus.BLOCKED
                                     || seat.status() == SeatingMapManagementService.SeatStatus.PRIVATE)).toList())).toList();
@@ -273,7 +274,8 @@ public class SeatingService {
             var seats = views.stream().filter(seat -> seat.row() == rowIndex).map(seat -> {
                 double x = (seat.column() - 1 + (layout.getAisleAfter() > 0 && seat.column() > layout.getAisleAfter() ? 1 : 0)) * 10.0;
                 double curve = "FAN".equals(layout.getTemplate()) ? Math.pow((x - width / 2) / width, 2) * 12 : 0;
-                return new AnonymousSeatingPlanRenderer.Seat(seat.code(), x, y + curve, seat.accessible(), seat.blocked());
+                return new AnonymousSeatingPlanRenderer.Seat(seat.code(), String.valueOf((char) ('A' + seat.row())),
+                        String.valueOf(seat.column()), x, y + curve, seat.accessible(), seat.blocked());
             }).toList();
             elements.add(new AnonymousSeatingPlanRenderer.Element("row-" + row, "Row " + (char) ('A' + row), -12, y, 0, seats));
         }
