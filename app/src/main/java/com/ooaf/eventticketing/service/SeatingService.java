@@ -179,6 +179,13 @@ public class SeatingService {
         return evaluation(event, confirmedBookings(eventId));
     }
 
+    @Transactional(readOnly = true)
+    public AllocationMetricsResponse metricsResponse(Long eventId, String email) {
+        var evaluation = metrics(eventId, email);
+        var run = runs.findById(eventId).orElseThrow(() -> conflict("Run allocation before reading metrics"));
+        return AllocationMetricsResponse.from(evaluation, run.getElapsedMillis());
+    }
+
     private AllocationEvaluation evaluation(Event event, List<Booking> confirmed) {
         if (!event.isSeatIdentifiersConfirmed()) return AllocationEvaluation.generalAdmission();
         List<AllocationSeat> inputSeats;
@@ -216,6 +223,61 @@ public class SeatingService {
                 booking.getSeatCode(), booking.getSplitReason(), !event.isSeatIdentifiersConfirmed(),
                 layouts.findById(event.getId()).map(this::layoutView).orElse(null),
                 managedMaps.existsById(event.getId()) ? mapManagement.attendeeMap(event.getId()) : null);
+    }
+
+    @Transactional(readOnly = true)
+    public String printablePlan(Long eventId, String email) {
+        Event event = ownedEvent(eventId, email, false);
+        var run = runs.findById(eventId).orElseThrow(() -> conflict("Run allocation before printing a seating plan"));
+        Map<String, String> groups = new LinkedHashMap<>();
+        var assignments = confirmedBookings(eventId).stream().map(booking ->
+                new AnonymousSeatingPlanRenderer.Assignment(booking.getBookingRef(),
+                        booking.getGroupCode() == null ? null : groups.computeIfAbsent(booking.getGroupCode(),
+                                ignored -> "G" + (groups.size() + 1)),
+                        booking.getSeatCode(), booking.getSplitReason())).toList();
+        boolean generalAdmission = !event.isSeatIdentifiersConfirmed();
+        boolean campusDemo = false;
+        int version = run.getLayoutVersion();
+        List<AnonymousSeatingPlanRenderer.Element> elements = List.of();
+        if (!generalAdmission && managedMaps.existsById(eventId)) {
+            var map = mapManagement.attendeeMap(eventId);
+            version = map.version();
+            // Exclude free-form notes, attendee data and private group join codes from the document.
+            elements = map.elements().stream().map(element -> new AnonymousSeatingPlanRenderer.Element(
+                    element.key(), element.label(), element.positionX(), element.positionY(), element.rotationDegrees(),
+                    element.seats().stream().map(seat -> new AnonymousSeatingPlanRenderer.Seat(seat.code(),
+                            seat.positionX(), seat.positionY(), seat.accessible(),
+                            seat.status() == SeatingMapManagementService.SeatStatus.BLOCKED
+                                    || seat.status() == SeatingMapManagementService.SeatStatus.PRIVATE)).toList())).toList();
+        } else if (!generalAdmission) {
+            var layout = layouts.findById(eventId).orElseThrow(() -> conflict("Layout not found"));
+            campusDemo = "CAMPUS_DEMO".equals(layout.getSource());
+            version = layout.getLayoutVersion();
+            elements = printableElements(layout);
+        }
+        return AnonymousSeatingPlanRenderer.render(new AnonymousSeatingPlanRenderer.Plan(event.getTitle(),
+                event.getDateTime(), event.getVenue(), run.getCompletedAt(), version, generalAdmission, campusDemo,
+                elements, assignments));
+    }
+
+    private List<AnonymousSeatingPlanRenderer.Element> printableElements(SeatingLayout layout) {
+        var elements = new ArrayList<AnonymousSeatingPlanRenderer.Element>();
+        var views = seatViews(layout);
+        boolean central = "CENTRAL".equals(layout.getTemplate());
+        double width = (layout.getSeatsPerRow() + (layout.getAisleAfter() > 0 ? 1 : 0)) * 10.0;
+        for (int row = 0; row < layout.getRowCount(); row++) {
+            int rowIndex = row;
+            double y = row * 24.0 + (central && row >= (layout.getRowCount() + 1) / 2 ? 30 : 0);
+            var seats = views.stream().filter(seat -> seat.row() == rowIndex).map(seat -> {
+                double x = (seat.column() - 1 + (layout.getAisleAfter() > 0 && seat.column() > layout.getAisleAfter() ? 1 : 0)) * 10.0;
+                double curve = "FAN".equals(layout.getTemplate()) ? Math.pow((x - width / 2) / width, 2) * 12 : 0;
+                return new AnonymousSeatingPlanRenderer.Seat(seat.code(), x, y + curve, seat.accessible(), seat.blocked());
+            }).toList();
+            elements.add(new AnonymousSeatingPlanRenderer.Element("row-" + row, "Row " + (char) ('A' + row), -12, y, 0, seats));
+        }
+        elements.add(new AnonymousSeatingPlanRenderer.Element("stage", "STAGE", width / 2 - 10,
+                central ? (layout.getRowCount() + 1) / 2 * 24.0 + 10 : -20, 0, List.of()));
+        return elements;
     }
 
     @Transactional(readOnly = true)

@@ -1,6 +1,6 @@
 package com.ooaf.eventticketing.controller;
-import com.ooaf.eventticketing.allocation.AllocationEvaluation;
 import com.ooaf.eventticketing.allocation.AllocationStrategy;
+import com.ooaf.eventticketing.dto.AllocationMetricsResponse;
 import com.ooaf.eventticketing.dto.SeatingLayoutRequest;
 import com.ooaf.eventticketing.entity.AllocationRun;
 import com.ooaf.eventticketing.service.SeatingService;
@@ -26,8 +26,8 @@ public class SeatingController {
         return service.allocate(id, auth.getName(), strategy);
     }
     @GetMapping("/api/organiser/events/{id}/allocation/metrics")
-    public AllocationEvaluation metrics(@PathVariable Long id, Authentication auth) {
-        return service.metrics(id, auth.getName());
+    public AllocationMetricsResponse metrics(@PathVariable Long id, Authentication auth) {
+        return service.metricsResponse(id, auth.getName());
     }
     @GetMapping("/api/bookings/{id}/ticket")
     public SeatingService.TicketView ticket(@PathVariable Long id, Authentication auth) { return service.ticket(id, auth.getName()); }
@@ -36,5 +36,13 @@ public class SeatingController {
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/csv"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=event-" + id + "-allocation.csv")
                 .body(service.export(id, auth.getName()));
+    }
+    @GetMapping("/api/organiser/events/{id}/allocation/print")
+    public ResponseEntity<String> printablePlan(@PathVariable Long id, Authentication auth) {
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/html;charset=UTF-8"))
+                .cacheControl(CacheControl.noStore())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=event-" + id + "-seating-plan.html")
+                .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'")
+                .body(service.printablePlan(id, auth.getName()));
     }
 }
