@@ -1721,4 +1721,37 @@ class SeatingIntegrationTest {
 
         assertEquals(Boolean.FALSE, generated.identifiersConfirmed());
     }
+
+    @Test
+    void centralStageLayoutSeatsGroupInRowNextToTheStage() {
+        // Rows A and B face C and D across the stage, so B and C are the stage-side rows.
+        seating.configure(eventId, ownerEmail, new SeatingLayoutRequest(SeatingLayoutRequest.Source.EXTERNAL,
+                SeatingLayoutRequest.Template.CENTRAL, null, 4, 4, 0, List.of(), List.of(), true));
+        publish();
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        close();
+        seating.allocate(eventId, ownerEmail);
+
+        assertEquals("B1", seating.ticket(first.id(), studentEmail).seatCode());
+        assertEquals("B2", seating.ticket(second.id(), friendEmail).seatCode());
+    }
+
+    @Test
+    void centralStageMapPrefersFrontSouthRowOverSecondNorthRow() {
+        // North row A is unavailable, so the choice is North B (second row) or South C (front row).
+        var generated = externalTemplates.generate(new ExternalVenueTemplateRequest("Central stage demo",
+                SeatingLayoutRequest.Template.CENTRAL, 4, 4, 0, List.of("A1", "A2", "A3", "A4"), List.of()));
+        managedSeating.saveMap(eventId, ownerEmail, new SeatMapRequest(generated.name(),
+                generated.attendeesChooseSeats(), generated.autoMatchTicketCapacities(), true,
+                generated.ticketTypeCapacities(), generated.elements()));
+        publish();
+        var first = book(studentEmail, true, null, false);
+        var second = book(friendEmail, false, first.groupCode(), false);
+        close();
+        seating.allocate(eventId, ownerEmail);
+
+        assertEquals("C1", seating.ticket(first.id(), studentEmail).seatCode());
+        assertEquals("C2", seating.ticket(second.id(), friendEmail).seatCode());
+    }
 }

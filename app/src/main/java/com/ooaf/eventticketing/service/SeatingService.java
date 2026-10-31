@@ -117,11 +117,13 @@ public class SeatingService {
                         .filter(b -> b.getStatus() != BookingStatus.CANCELLED && b.getSeatCode() != null)
                         .map(Booking::getSeatCode).filter(code -> !fixedCodes.contains(code)).collect(Collectors.toSet());
                 var tableIds = mapManagement.tableElementIds(eventId);
+                int southStart = centralSouthStart(storedSeats);
                 var allocationSeats = storedSeats.stream().map(seat -> new AllocationSeat(
                         seat.getId(), seat.getSectionName(), seat.getRowLabel(), seat.getRowIndex(),
                         seat.getSeatNumber(), seat.isAccessible(), seat.isBlocked() || reservedCodes.contains(seat.getCode())
                                 || (seat.isPrivateSeat() && !fixedCodes.contains(seat.getCode())),
-                        seat.getElementId(), tableIds.contains(seat.getElementId()))).toList();
+                        seat.getElementId(), tableIds.contains(seat.getElementId()),
+                        southStart >= 0 && isSouth(seat) ? seat.getRowIndex() - southStart : seat.getRowIndex())).toList();
                 try {
                     var input = confirmed.stream().map(booking -> {
                         VenueSeat assigned = booking.getSeatCode() == null ? null : byCode.get(booking.getSeatCode());
@@ -143,7 +145,7 @@ public class SeatingService {
                 var layout = layouts.findById(eventId).orElseThrow(() -> conflict("Save a seating layout before allocation"));
                 version = layout.getLayoutVersion();
                 var views = seatViews(layout);
-                var seats = views.stream().map(s -> new AllocationSeat(s.id(), s.section(), String.valueOf((char)('A' + s.row())), s.row(), s.column(), s.accessible(), s.blocked())).toList();
+                var seats = views.stream().map(s -> new AllocationSeat(s.id(), s.section(), String.valueOf((char)('A' + s.row())), s.row(), s.column(), s.accessible(), s.blocked(), null, false, stageRow(layout, s.row()))).toList();
                 try {
                     var result = allocator.allocate(confirmed.stream().map(b -> new AllocationBooking(b.getId(), b.getGroupCode(), b.isAccessibilityRequired())).toList(), seats, selectedStrategy);
                     Map<Long, Booking> byId = confirmed.stream().collect(Collectors.toMap(Booking::getId, b -> b));
@@ -335,6 +337,21 @@ public class SeatingService {
         }
         return result;
     }
+    /** Rows from the stage; a central stage sits between the last North row and the first South row. */
+    private static int stageRow(SeatingLayout layout, int row) {
+        if (!"CENTRAL".equals(layout.getTemplate())) return row;
+        int northRows = (layout.getRowCount() + 1) / 2;
+        return row < northRows ? northRows - 1 - row : row - northRows;
+    }
+    /**
+     * Central-stage maps number North rows outward from the stage, then continue the numbering into
+     * the South half, so South depth restarts at its first row. Returns -1 for other maps.
+     */
+    private static int centralSouthStart(List<VenueSeat> seats) {
+        boolean central = seats.stream().anyMatch(seat -> seat.getSectionName().startsWith("North"));
+        return central ? seats.stream().filter(SeatingService::isSouth).mapToInt(VenueSeat::getRowIndex).min().orElse(-1) : -1;
+    }
+    private static boolean isSouth(VenueSeat seat) { return seat.getSectionName().startsWith("South"); }
     private String code(int row, int col) { return String.valueOf((char) ('A' + row)) + col; }
     private ResponseStatusException conflict(String message) { return new ResponseStatusException(HttpStatus.CONFLICT, message); }
     private ResponseStatusException badRequest(String message) { return new ResponseStatusException(HttpStatus.BAD_REQUEST, message); }
