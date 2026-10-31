@@ -6,7 +6,7 @@ export function AllocationMetrics({ eventId }) {
   const [metrics, setMetrics] = useState(null);
   const [error, setError] = useState(null);
   
-  // RYOJI FIX: Track the active eventId to ignore stale responses
+  // Track the active eventId to ignore stale responses
   const eventIdRef = useRef(eventId);
 
   useEffect(() => {
@@ -74,7 +74,8 @@ export function AllocationMetrics({ eventId }) {
           <div><strong>Duplicates:</strong> {metrics.duplicateAllocationCount}</div>
           <div><strong>Avg Split Distance:</strong> {metrics.averageSplitDistance != null ? metrics.averageSplitDistance : 'Not applicable'}</div>
           <div><strong>Avg Group Contiguity:</strong> {metrics.averageGroupContiguityPercentage != null ? `${metrics.averageGroupContiguityPercentage}%` : 'Not applicable'}</div>
-          <div><strong>Runtime:</strong> {metrics.elapsedMillis != null ? `${metrics.elapsedMillis} ms` : 'Not applicable'}</div>
+          {/* BLOCKER 1 FIX: Removed the null check for elapsedMillis since it's a primitive long */}
+          <div><strong>Runtime:</strong> {metrics.elapsedMillis} ms</div>
         </div>
       )}
       <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>

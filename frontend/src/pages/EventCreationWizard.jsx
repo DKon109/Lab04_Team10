@@ -131,7 +131,6 @@ export function EventCreationWizard() {
       const layout = draft.venueLayout;
       
       if (layout.mode === 'usyd' && layout.map) {
-        // RYOJI FIX 1: Create new object to avoid mutating template, derive confirmation from mode
         const updatedMap = {
           ...layout.map,
           identifiersConfirmed: draft.seatingMode === 'group-allocated' ? draft.unnumberedConfirmed : false
@@ -149,7 +148,8 @@ export function EventCreationWizard() {
             aisleAfter: 0,
             blockedCodes: [],
             accessibleCodes: [],
-            identifiersConfirmed: draft.seatingMode === 'group-allocated' ? draft.unnumberedConfirmed : false,
+            // BLOCKER 2 FIX: Restore main's logic
+            identifiersConfirmed: layout.hasNumberedSeats ? true : draft.unnumberedConfirmed,
           }
         });
       }

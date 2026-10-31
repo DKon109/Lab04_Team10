@@ -36,7 +36,7 @@ export function OrganiserDashboard() {
     return cancel;
   }, [reload]);
 
-  // RYOJI FIX 3: Reconcile the metrics selection when filters change
+  // Reconcile the metrics selection when filters change
   useEffect(() => {
     if (events.length > 0) {
       const eventExists = events.some(ev => ev.id.toString() === selectedMetricsEventId);
@@ -120,7 +120,8 @@ export function OrganiserDashboard() {
                 {events.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
               </select>
             </div>
-            {selectedMetricsEventId && <AllocationMetrics eventId={selectedMetricsEventId} />}
+            {/* BLOCKER 1 FIX: Added key={selectedMetricsEventId} */}
+            {selectedMetricsEventId && <AllocationMetrics key={selectedMetricsEventId} eventId={selectedMetricsEventId} />}
           </div>
         )}
       </main>

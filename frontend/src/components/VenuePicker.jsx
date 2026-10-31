@@ -62,7 +62,12 @@ export function VenuePicker({ value, onSelect }) {
         if (cancelled) return;
         if (data && data.length > 0) {
           const mappedRooms = data.map(room => {
-            const totalSeats = room.map?.elements?.reduce((acc, el) => acc + (el.seats?.length || 0), 0) || 0;
+            // BLOCKER 4 FIX: Exclude blocked and private seats from capacity
+            const totalSeats = room.map?.elements?.reduce((acc, el) => {
+              const validSeatsInElement = el.seats?.filter(s => !s.blocked && !s.privateSeat) || [];
+              return acc + validSeatsInElement.length;
+            }, 0) || 0;
+
             const numRows = room.map?.elements?.length || Math.max(1, Math.ceil(totalSeats / 15));
             const numSeatsPerRow = Math.ceil(totalSeats / numRows) || 15;
 
@@ -180,7 +185,19 @@ export function VenuePicker({ value, onSelect }) {
         <div className="venue-preview">
           <p className="venue-preview-label">Layout preview</p>
           {mode === 'usyd' && room?.map ? (
-            <ManagedSeatMap map={room.map} />
+            <ManagedSeatMap map={{
+              ...room.map,
+              // BLOCKER 3 FIX: Hide version if undefined
+              version: room.map.version || undefined,
+              // BLOCKER 3 FIX: Map blocked/private to statuses
+              elements: room.map.elements.map(el => ({
+                ...el,
+                seats: el.seats.map(s => ({
+                  ...s,
+                  status: s.blocked ? 'BLOCKED' : s.privateSeat ? 'PRIVATE' : 'AVAILABLE'
+                }))
+              }))
+            }} />
           ) : (
             <LayoutPreview shape={previewShape} rows={previewRows} seatsPerRow={previewCols} />
           )}
