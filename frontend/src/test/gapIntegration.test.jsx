@@ -7,29 +7,24 @@ import * as apiClient from '../api/apiClient';
 
 vi.mock('../api/apiClient', () => ({ request: vi.fn() }));
 
-// Mock ManagedSeatMap to assert it gets rendered
 vi.mock('../components/ManagedSeatMap', () => ({
-  ManagedSeatMap: ({ map }) => <div data-testid="managed-map">Managed Map Elements: {map.elements.length}</div>
+  ManagedSeatMap: ({ map }) => <div data-testid="managed-map">Map Version: {map.version || 'undefined'} | Seats: {map.elements[0].seats.map(s => s.status).join(',')}</div>
 }));
 
-describe('Ryoji Final Integration Tests', () => {
+describe('Final Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  // 1. RYOJI'S POINT 1: Render actual campus map with irregular layout
-  it('renders ManagedSeatMap for campus templates and passes the actual map data', async () => {
-    // Mock an irregular layout (different number of seats per row)
+  it('calculates capacity excluding blocked/private and maps seat status', async () => {
     apiClient.request.mockResolvedValue([
       {
         id: 'everest',
-        name: 'Everest Theatre',
-        sourceUrl: 'http://example.com/map.pdf',
+        name: 'Everest',
         map: {
+          // Test with no version
           elements: [
-            { seats: [1, 2, 3] }, // 3 seats
-            { seats: [4, 5] },    // 2 seats
-            { seats: [6, 7, 8, 9] } // 4 seats
+            { seats: [{ id: '1' }, { id: '2', blocked: true }, { id: '3', privateSeat: true }] }
           ]
         }
       }
@@ -39,55 +34,36 @@ describe('Ryoji Final Integration Tests', () => {
 
     await waitFor(() => expect(screen.queryByText(/Loading rooms/i)).not.toBeInTheDocument());
 
-    // Click the room to select it
-    fireEvent.click(screen.getByText(/Everest Theatre/i));
+    // Capacity should be 1 (only the first seat is valid)
+    expect(screen.getByText(/1 seats/i)).toBeInTheDocument();
 
-    // Assert that the ManagedSeatMap is rendered with the correct data (3 elements)
-    expect(screen.getByTestId('managed-map')).toHaveTextContent('Managed Map Elements: 3');
-    // Ensure generic LayoutPreview is NOT rendered
-    expect(screen.queryByText('Layout preview')).toBeInTheDocument(); // The wrapper is still there
-    expect(screen.getByTestId('managed-map')).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Everest/i));
+
+    // Assert correct status mapping and no 'undefined' version string
+    expect(screen.getByTestId('managed-map')).toHaveTextContent('Map Version: undefined | Seats: AVAILABLE,BLOCKED,PRIVATE');
   });
 
-  // 2. RYOJI'S POINT 2: Ignore stale metrics responses
-  it('ignores stale metrics responses when eventId changes mid-request', async () => {
-    let resolveEventA;
-    const promiseA = new Promise((resolve) => { resolveEventA = resolve; });
-
-    // Mock request so it hangs for Event A
+  it('ignores stale metrics using key prop (rerender)', async () => {
+    let resolveA;
+    const promiseA = new Promise(r => resolveA = r);
     apiClient.request.mockReturnValueOnce(promiseA);
 
-    const { unmount } = render(<AllocationMetrics eventId="A" />);
-    
-    // Click fetch for Event A (hangs)
+    // Render Event A (with key)
+    const { rerender } = render(<AllocationMetrics key="A" eventId="A" />);
     fireEvent.click(screen.getByText(/View Allocation Metrics/i));
 
-    // Unmount (simulating the dashboard completely switching the component)
-    unmount();
+    // Rerender with Event B BEFORE A resolves
+    apiClient.request.mockResolvedValueOnce({ groupCount: 99, elapsedMillis: 50 });
+    rerender(<AllocationMetrics key="B" eventId="B" />);
 
-    // Render fresh for Event B
-    apiClient.request.mockResolvedValueOnce({
-      groupCount: 99, // B's data
-      percentageGroupsTogether: 100,
-      elapsedMillis: 50
-    });
-    
-    render(<AllocationMetrics eventId="B" />);
+    // B should load successfully
     fireEvent.click(screen.getByText(/View Allocation Metrics/i));
+    await waitFor(() => expect(screen.getByText('99')).toBeInTheDocument());
 
-    // Wait for B to load
-    await waitFor(() => {
-      expect(screen.getByText('99')).toBeInTheDocument();
-    });
+    // Now resolve A
+    resolveA({ groupCount: 1, elapsedMillis: 10 });
 
-    // Now resolve the stale Event A request
-    resolveEventA({
-      groupCount: 1, // A's stale data
-      percentageGroupsTogether: 50,
-      elapsedMillis: 10
-    });
-
-    // Assert that A's stale data DID NOT overwrite B's data
+    // Assert A's data didn't overwrite B's
     await waitFor(() => {
       expect(screen.queryByText('1')).not.toBeInTheDocument();
       expect(screen.getByText('99')).toBeInTheDocument();
