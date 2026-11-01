@@ -148,8 +148,10 @@ export function EventCreationWizard() {
             aisleAfter: 0,
             blockedCodes: [],
             accessibleCodes: [],
-            // BLOCKER 2 FIX: Restore main's logic
-            identifiersConfirmed: layout.hasNumberedSeats ? true : draft.unnumberedConfirmed,
+            // P1 FIX: Force false for GA, derive from layout/confirmation for Group Allocated
+            identifiersConfirmed: draft.seatingMode === 'general-admission' 
+              ? false 
+              : (layout.hasNumberedSeats ? true : draft.unnumberedConfirmed),
           }
         });
       }
