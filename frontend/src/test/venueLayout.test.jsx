@@ -42,6 +42,11 @@ describe('buildRoomLayout', () => {
 });
 
 describe('buildTemplateLayout', () => {
+  it('rejects oversized or fractional dimensions rather than keeping a stale valid selection', () => {
+    expect(buildTemplateLayout(TEMPLATE, { rows: 20, seatsPerRow: 20 })).toBeNull();
+    expect(buildTemplateLayout(TEMPLATE, { rows: 2.5, seatsPerRow: 10 })).toBeNull();
+    expect(buildTemplateLayout(TEMPLATE, { rows: 21, seatsPerRow: 1 })).toBeNull();
+  });
   it('produces an external-shaped layout with computed capacity', () => {
     const layout = buildTemplateLayout(TEMPLATE, {
       rows: 8,

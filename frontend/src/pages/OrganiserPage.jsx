@@ -32,6 +32,7 @@ export function OrganiserPage() {
   const [errors, setErrors] = useState({});
   const [banner, setBanner] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [layoutLocked, setLayoutLocked] = useState(false);
   useEffect(() => {
     if (!eventId) return;
     let active = true;
@@ -39,6 +40,7 @@ export function OrganiserPage() {
       if (!active) return;
       if (data.event.status !== 'draft') throw new Error('Only draft events can be edited.');
       setForm({ ...data.event, audience: data.event.university ? 'USYD' : 'SYDNEY', description: data.event.description || '', imageUrl: data.event.imageUrl || '', tags: (data.event.tags || []).join(', ') });
+      setLayoutLocked(Boolean(data.layout || data.managedMap));
       setReady(true);
     }).catch(error => { if (active) setBanner({ type: 'error', text: error.message }); });
     return () => { active = false; };
@@ -66,7 +68,7 @@ export function OrganiserPage() {
         organiserType: form.organiserType,
         imageUrl: form.imageUrl || null,
         description: form.description || null,
-        capacity: Number(form.capacity),
+        capacity: layoutLocked ? undefined : Number(form.capacity),
         seatIdentifiersConfirmed: form.seatIdentifiersConfirmed,
         tags: form.tags
           .split(',')
@@ -190,8 +192,8 @@ export function OrganiserPage() {
                 {fieldError('imageUrl')}
               </div>
 
-              <label className="field">Capacity (1–300)<input type="number" min="1" max="300" required value={form.capacity} onChange={update('capacity')} />{fieldError('capacity')}</label>
-              <label className="check-label"><input type="checkbox" checked={form.seatIdentifiersConfirmed} onChange={e => setForm(previous => ({ ...previous, seatIdentifiersConfirmed: e.target.checked }))} /><span>I confirm permanent or temporary physical seat identifiers will be available at this venue.<span className="subtle">Required for private group booking. Leave unchecked for general admission; this does not create a seat map or run allocation.</span></span></label>
+              <label className="field">Capacity (from saved map when configured)<input type="number" min="1" max={layoutLocked ? undefined : 300} required disabled={layoutLocked} value={form.capacity} onChange={update('capacity')} />{fieldError('capacity')}</label>
+              <label className="check-label"><input type="checkbox" disabled={layoutLocked} checked={form.seatIdentifiersConfirmed} onChange={e => setForm(previous => ({ ...previous, seatIdentifiersConfirmed: e.target.checked }))} /><span>I confirm permanent or temporary physical seat identifiers will be available at this venue.<span className="subtle">Required for private group booking. When a map is saved, configure its capacity and identifiers in the venue workflow.</span></span></label>
 
               <div className="field">
                 <label htmlFor="ev-description">Description</label>

@@ -26,7 +26,7 @@ export default function App() {
           <Route path="/bookings/:bookingId/ticket" element={<ProtectedRoute><TicketAndSeatMapView /></ProtectedRoute>} />
           
           {/* ORGANISER ROUTES */}
-          <Route path="/organiser" element={<ProtectedRoute role="COMMITTEE_MEMBER"><OrganiserPage /></ProtectedRoute>} />
+          <Route path="/organiser" element={<Navigate to="/organiser/dashboard" replace />} />
           <Route path="/organiser/dashboard" element={<ProtectedRoute role="COMMITTEE_MEMBER"><OrganiserDashboard /></ProtectedRoute>} />
           <Route path="/organiser/new" element={<ProtectedRoute role="COMMITTEE_MEMBER"><EventCreationWizard /></ProtectedRoute>} />
           
