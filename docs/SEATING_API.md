@@ -34,9 +34,13 @@ ownership of that event.
 
 Save the layout while the event is a draft and before active bookings or an
 allocation run exist. The `GET` and `PUT` seating endpoints return `event`,
-`layout`, `allocation`, `confirmedBookings` and `unverifiedLegacyBookings`.
-The `layout` field represents the legacy grid; retrieve managed geometry from
-the separate `/seat-map` endpoint.
+`layout`, `allocation`, `confirmedBookings`, `unverifiedLegacyBookings` and
+`managedMap`. The `layout` field represents the legacy grid; `managedMap`
+contains the owner's saved managed geometry when present. This lets the
+management page preview the same persisted map used for allocation rather than
+offering an incompatible legacy grid editor. The separate `/seat-map` endpoint
+remains available. Booking responses also expose `generalAdmission` so attendee
+status text never promises a physical seat for a seatless event.
 
 Layout request example:
 

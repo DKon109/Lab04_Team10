@@ -14,7 +14,7 @@ export function TicketAndSeatMapView() {
   
   useEffect(() => {
     let active = true; 
-    setError('');
+    setError(''); setTicket(null);
     fetchTicket(bookingId)
       .then(data => { if (active) setTicket(data); })
       .catch(e => { if (active) setError(e.message); });
@@ -53,7 +53,7 @@ export function TicketAndSeatMapView() {
                   {ticket.splitReason && <div className="form-banner error"><strong>Your group is split.</strong><p>{ticket.splitReason}</p></div>}
                 </>
               ) : (
-                <p className="form-banner success">{ticket.booking.status === 'CANCELLED' ? 'This booking is cancelled.' : 'Waiting for the organiser to close registration and run allocation. No seat has been assigned yet.'}</p>
+                <p className="form-banner success">{ticket.booking.status === 'CANCELLED' ? 'This booking is cancelled.' : ticket.generalAdmission ? 'General admission: no physical seat is assigned. Follow the organiser’s arrival instructions.' : 'Waiting for the organiser to close registration and run allocation. No seat has been assigned yet.'}</p>
               )}
               
               <button className="btn btn-ghost" onClick={() => setVersion(v => v + 1)}>Refresh ticket status</button>

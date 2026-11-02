@@ -62,6 +62,20 @@ describe('attendee booking journey', () => {
     await screen.findByRole('radio', { name: /Just me/ });
     expect(screen.queryByRole('radio', { name: /Start a group/ })).not.toBeInTheDocument();
   });
+  it('explains general admission after successful checkout', async () => {
+    fetchEvent.mockResolvedValue({ ...event, seatIdentifiersConfirmed: false });
+    mockCheckout.mockResolvedValue({ outcome: 'SUCCESS', booking: { ...booking, generalAdmission: true } });
+    renderBooking(); await review();
+    await userEvent.click(screen.getByRole('button', { name: /Simulate successful/ }));
+    expect(await screen.findByText(/General admission: no physical seat will be assigned/)).toBeInTheDocument();
+    expect(screen.queryByText(/Seat allocation is pending/)).not.toBeInTheDocument();
+  });
+  it('does not label a general-admission booking as awaiting a seat', async () => {
+    fetchMyBookings.mockResolvedValue([{ ...booking, generalAdmission: true }]);
+    render(<MemoryRouter><MyBookingsPage /></MemoryRouter>);
+    expect(await screen.findByText('General admission')).toBeInTheDocument();
+    expect(screen.queryByText('Awaiting seat allocation')).not.toBeInTheDocument();
+  });
   it('shows pending allocation honestly in My bookings', async () => {
     fetchMyBookings.mockResolvedValue([booking]); render(<MemoryRouter><MyBookingsPage /></MemoryRouter>);
     expect(await screen.findByText('Awaiting seat allocation')).toBeInTheDocument();

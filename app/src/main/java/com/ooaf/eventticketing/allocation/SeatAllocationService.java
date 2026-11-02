@@ -77,7 +77,9 @@ public class SeatAllocationService {
             List<AllocationSeat> currentSeats = new ArrayList<>(available.values());
             remainingAccessibleBookings -= accessibleCount(group);
             long maxAccessible = accessibleCount(currentSeats) - remainingAccessibleBookings;
-            List<AllocationSeat> selected = pending.isEmpty() ? List.of()
+            // If this group needs every remaining seat there is only one possible set.
+            // Capacity/accessibility were validated above; avoid enumerating identical clusters.
+            List<AllocationSeat> selected = pending.isEmpty() ? List.of() : pending.size() == currentSeats.size() ? currentSeats
                     : findContiguousBlock(group, currentSeats, maxAccessible, anchors);
             if (!pending.isEmpty() && selected.isEmpty()) {
                 selected = findNearestCluster(group, currentSeats, maxAccessible, anchors, strategy);
@@ -219,13 +221,18 @@ public class SeatAllocationService {
     }
 
     private Comparator<List<AllocationSeat>> candidateComparator(long accessibleNeeded, List<AllocationSeat> available) {
+        // Candidate scores are immutable during this search. Avoid rebuilding the free-seat
+        // topology for the same candidate on every comparator invocation.
+        var isolatedCache = new java.util.IdentityHashMap<List<AllocationSeat>, Integer>();
+        java.util.function.ToIntFunction<List<AllocationSeat>> isolated = candidate ->
+                isolatedCache.computeIfAbsent(candidate, key -> isolatedSeats(available, key));
         return Comparator
                 .comparingLong((List<AllocationSeat> candidate) ->
                         accessibleCount(candidate) - accessibleNeeded)
                 // Nearer the stage is better, but each single empty seat left behind costs two rows.
                 .thenComparingDouble(candidate -> candidate.get(0).stageRow()
-                        + ISOLATED_SEAT_ROW_COST * isolatedSeats(available, candidate))
-                .thenComparingInt(candidate -> isolatedSeats(available, candidate))
+                        + ISOLATED_SEAT_ROW_COST * isolated.applyAsInt(candidate))
+                .thenComparingInt(isolated)
                 .thenComparing(candidate -> candidate.get(0), SEAT_ORDER);
     }
 
@@ -245,11 +252,12 @@ public class SeatAllocationService {
         long accessibleNeeded = accessibleCount(group);
         List<AllocationSeat> ordered = seats.stream().sorted(SEAT_ORDER).toList();
         List<ClusterCandidate> candidates = new ArrayList<>();
+        var seen = new HashSet<List<Long>>();
 
         // Retain consecutive windows and add neighbourhoods so fixed group members
         // and same-row seats are considered even when sections interrupt sort order.
         for (int start = 0; start + size <= ordered.size(); start++) {
-            addCluster(candidates, ordered.subList(start, start + size), anchors, seats,
+            addCluster(candidates, seen, ordered.subList(start, start + size), anchors, seats,
                     accessibleNeeded, maxAccessible);
         }
         for (var seed : ordered) {
@@ -261,7 +269,7 @@ public class SeatAllocationService {
                             + anchors.stream().mapToDouble(seat::distanceTo).sum())
                     .thenComparing(SEAT_ORDER)).toList();
             var selected = selectFeasible(neighbourhood, size, accessibleNeeded, maxAccessible);
-            if (selected.size() == size) addCluster(candidates, selected, anchors, seats,
+            if (selected.size() == size) addCluster(candidates, seen, selected, anchors, seats,
                     accessibleNeeded, maxAccessible);
         }
         // Whole runs can produce two compact subgroups where nearest-seat growth
@@ -275,10 +283,10 @@ public class SeatAllocationService {
                     .thenComparing(block -> block.get(0), SEAT_ORDER))
                     .flatMap(List::stream).toList();
             var selected = selectFeasible(byBlock, size, accessibleNeeded, maxAccessible);
-            if (selected.size() == size) addCluster(candidates, selected, anchors, seats,
+            if (selected.size() == size) addCluster(candidates, seen, selected, anchors, seats,
                     accessibleNeeded, maxAccessible);
         }
-        addBalancedClusters(candidates, ordered, anchors, size, accessibleNeeded, maxAccessible);
+        addBalancedClusters(candidates, seen, ordered, anchors, size, accessibleNeeded, maxAccessible);
         Comparator<ClusterCandidate> ranking;
         if (seats.stream().anyMatch(AllocationSeat::table) || anchors.stream().anyMatch(AllocationSeat::table)) {
             // Table/row units take priority over physical side adjacency in mixed maps.
@@ -307,7 +315,7 @@ public class SeatAllocationService {
     }
 
     /** Water-fill table/row quotas around fixed members, then choose valid seats for each quota. */
-    private void addBalancedClusters(List<ClusterCandidate> candidates, List<AllocationSeat> available,
+    private void addBalancedClusters(List<ClusterCandidate> candidates, java.util.Set<List<Long>> seen, List<AllocationSeat> available,
             List<AllocationSeat> anchors, int pendingCount, long accessibleNeeded, long maxAccessible) {
         Map<String, List<AllocationSeat>> freeRows = available.stream().collect(Collectors.groupingBy(
                 AllocationTopology::placementUnitKey, LinkedHashMap::new, Collectors.toList()));
@@ -366,7 +374,7 @@ public class SeatAllocationService {
                     if (inRow.isEmpty()) inRow = selectFeasible(row.free(), pending, required[i], required[i]);
                     selected.addAll(inRow);
                 }
-                if (selected.size() == pendingCount) addCluster(candidates, selected, anchors, available,
+                if (selected.size() == pendingCount) addCluster(candidates, seen, selected, anchors, available,
                         accessibleNeeded, maxAccessible);
             }
         }
@@ -379,13 +387,17 @@ public class SeatAllocationService {
                 + candidate.imbalance() + candidate.blocks() - candidate.rows() + averageDistance;
     }
 
-    private void addCluster(List<ClusterCandidate> candidates, List<AllocationSeat> selected,
+    private void addCluster(List<ClusterCandidate> candidates, java.util.Set<List<Long>> seen, List<AllocationSeat> selected,
             List<AllocationSeat> anchors, List<AllocationSeat> available, long accessibleNeeded, long maxAccessible) {
         long accessible = accessibleCount(selected);
         if (accessible < accessibleNeeded || accessible > maxAccessible) return;
+        var ordered = selected.stream().sorted(SEAT_ORDER).toList();
+        // Windows, neighbourhoods and water-fill searches often produce the same placement.
+        // Evaluate it once, retaining the original deterministic ranking and tie-breaks.
+        if (!seen.add(ordered.stream().map(AllocationSeat::seatId).toList())) return;
         var whole = new ArrayList<>(anchors);
         whole.addAll(selected);
-        candidates.add(new ClusterCandidate(selected.stream().sorted(SEAT_ORDER).toList(),
+        candidates.add(new ClusterCandidate(ordered,
                 AllocationTopology.rowsUsed(whole), AllocationTopology.blockCount(whole),
                 AllocationTopology.rowSizeImbalance(whole), whole.size(), AllocationTopology.pairwiseDistance(whole),
                 AllocationTopology.isolatedSeats(available,

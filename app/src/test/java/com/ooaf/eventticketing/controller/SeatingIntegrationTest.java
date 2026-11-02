@@ -286,6 +286,16 @@ class SeatingIntegrationTest {
             assertEquals("CAMPUS_DEMO", result.layout().source());
         }
     }
+    @Test void ownerManagementIncludesSavedManagedMapAndAdmissionMode() {
+        managedSeating.saveMap(eventId, ownerEmail, managedMap(false));
+        var management = seating.management(eventId, ownerEmail);
+        assertNotNull(management.managedMap());
+        assertNull(management.layout());
+        assertEquals(managedSeating.organiserMap(eventId, ownerEmail).name(), management.managedMap().name());
+        publish();
+        var booking = book(studentEmail, false, null, false);
+        assertFalse(booking.generalAdmission());
+    }
     @Test void allocatedSeatCannotBeRemovedAndRetryPreservesTicketAndExport() {
         managedSeating.saveMap(eventId, ownerEmail, managedMap(false));
         publish();
