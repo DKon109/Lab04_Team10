@@ -176,6 +176,57 @@ class SeatAllocationServiceTest {
     }
 
     @Test
+    void fillsFrontRowsOfEverySectionBeforeRearRows() {
+        // Two eight-seat blocks either side of an aisle (rows A-H) and a 20-seat rear row J.
+        var seats = new ArrayList<AllocationSeat>();
+        long id = 1;
+        for (int row = 0; row < 8; row++) for (int number = 1; number <= 16; number++) {
+            seats.add(new AllocationSeat(id++, number <= 8 ? "Left" : "Right",
+                    String.valueOf((char) ('A' + row)), row, number, false, false));
+        }
+        for (int number = 1; number <= 20; number++) {
+            seats.add(new AllocationSeat(id++, "Rear", "J", 8, number, false, false));
+        }
+        var bookings = new ArrayList<AllocationBooking>();
+        long bookingId = 1;
+        int[] sizes = {7, 7, 7, 7, 5, 5, 3, 3};
+        for (int group = 0; group < sizes.length; group++) {
+            for (int member = 0; member < sizes[group]; member++) {
+                bookings.add(booking(bookingId++, "G" + group, false));
+            }
+        }
+
+        var result = service.allocate(bookings, seats);
+
+        var rowsUsed = result.assignments().stream()
+                .map(a -> seats.stream().filter(s -> s.seatId().equals(a.seatId())).findFirst().orElseThrow())
+                .map(AllocationSeat::rowLabel).distinct().sorted().toList();
+        assertEquals(List.of("A", "B", "C"), rowsUsed);
+        assertTrue(result.splits().isEmpty());
+    }
+
+    @Test
+    void usesStageRowWhenTheStageIsNotInFrontOfRowA() {
+        // Central stage: North row B and South row C both border the stage.
+        var seats = new ArrayList<AllocationSeat>();
+        long id = 1;
+        String[] labels = {"A", "B", "C", "D"};
+        int[] stageRows = {1, 0, 0, 1};
+        for (int row = 0; row < 4; row++) for (int number = 1; number <= 4; number++) {
+            seats.add(new AllocationSeat(id++, row < 2 ? "North" : "South", labels[row], row, number,
+                    false, false, null, false, stageRows[row]));
+        }
+        var bookings = new ArrayList<AllocationBooking>();
+        for (long i = 1; i <= 8; i++) bookings.add(booking(i, i <= 4 ? "FIRST" : "SECOND", false));
+
+        var result = service.allocate(bookings, seats);
+
+        assertTrue(result.assignments().stream()
+                .map(a -> seats.stream().filter(s -> s.seatId().equals(a.seatId())).findFirst().orElseThrow())
+                .allMatch(seat -> seat.stageRow() == 0));
+    }
+
+    @Test
     void rejectsDuplicateOrInaccessibleFixedAssignments() {
         var seats = row("A", 0, 1, 3);
         assertThrows(AllocationException.class, () -> service.allocate(List.of(
