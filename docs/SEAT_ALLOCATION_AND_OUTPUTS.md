@@ -245,9 +245,10 @@ sequenceDiagram
 The document contains:
 
 - Event title, date, venue, layout version and original allocation completion time.
-- A schematic overview with seat codes, assignment markers, unavailable positions, accessible outlines and preserved aisle gaps.
-- Additional row/table diagrams when the map contains more than 60 positions, so readers need not rely on the scaled overview.
-- A table joining plan references such as `P1` to booking references, group aliases, seat codes and split explanations.
+- Summary counts of assigned, empty and unavailable seats, groups and split groups.
+- One numbered seating overview. Each seat box shows its seat number, and each row carries its row letter at both ends. Boxes and labels follow angled or vertical rows. Unavailable positions, accessible outlines, dashed outlines for split groups and aisle gaps are shown. A stage is drawn in front of the first row when the layout does not map one. Large maps use the same overview instead of separate row/table diagrams.
+- One colour per group, chosen so that groups seated next to each other never share a colour. Solo bookings use a neutral colour.
+- A table matching each colour key to booking references, group aliases, seat codes and split explanations.
 - A general-admission explanation and reference table instead of a seat diagram when seats are not assigned.
 - A campus-demo notice for legacy demo profiles. All geometry remains schematic; an export does not establish physical venue verification.
 
@@ -317,7 +318,7 @@ The proposal's performance target is allocation of feasible datasets with up to 
 | `SeatingIntegrationTest` | Persisted assignments, replay behaviour, ticket privacy, managed-map integration and metrics/runtime API. |
 | `GeneralAdmissionPersistenceTest` | Committed general-admission booking/allocation retrieval across transactions. |
 | `PrintableSeatingPlanIntegrationTest` | All three legacy template families, managed geometry, general admission, owner access, pre-allocation rejection, anonymous references and escaped event text. |
-| `AnonymousSeatingPlanRendererTest` | Escaping of HTML/SVG text and a 300-position document with row details and 280 assignment references. |
+| `AnonymousSeatingPlanRendererTest` | Escaping of HTML/SVG text; a 300-position document with 280 assignment references, seat numbers, row labels and distinct colours for neighbouring groups; split-group outlines and the drawn stage; angled and vertical rows. |
 | `AllocationBenchmarkTest` | Timed allocation/flush across varied supported layouts, strategies and group sizes, with correctness checks. |
 
 Run the feature checks from the `app` directory:
