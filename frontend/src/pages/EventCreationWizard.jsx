@@ -145,9 +145,9 @@ export function EventCreationWizard() {
             template: layout.shape ? layout.shape.toUpperCase() : 'FRONT',
             rows: layout.rows,
             seatsPerRow: layout.seatsPerRow,
-            aisleAfter: 0,
-            blockedCodes: [],
-            accessibleCodes: [],
+            aisleAfter: Number(layout.aisleAfter || 0),
+            blockedCodes: (layout.blockedCodes || '').split(',').map(s => s.trim()).filter(Boolean),
+            accessibleCodes: (layout.accessibleCodes || '').split(',').map(s => s.trim()).filter(Boolean),
             // P1 FIX: Force false for GA, derive from layout/confirmation for Group Allocated
             identifiersConfirmed: draft.seatingMode === 'general-admission' 
               ? false 

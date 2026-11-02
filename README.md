@@ -1,5 +1,7 @@
 # Tixora
 
+> **Final integration (2 November 2026):** See [final acceptance and run commands](docs/FINAL_ACCEPTANCE.md) for the proposal traceability matrix, current validation and remaining physical/browser acceptance. [Tejas's report section and evidence](docs/FINAL_TEJAS_REPORT.md) accompanies the final integration branch. PRs #24 and #25 are merged; earlier Sprint 0/1 descriptions below are historical. Run `scripts/smoke-final.ps1` against the local Docker build to exercise every supported venue family through checkout, allocation and outputs.
+
 > **Sprint 3 review branch (12 October 2026):** responsive attendee experience, mock checkout, organiser lifecycle, persisted seating/allocation, private seat-map tickets and anonymous export are now integrated. Start with [Sprint 3 handoff and run commands](docs/SPRINT3_TEJAS.md), [checkout API](docs/MOCK_CHECKOUT_API.md), and [seating API](docs/SEATING_API.md). Campus layouts remain explicitly unverified demos. The Sprint 0/1 descriptions below are historical, not the current implementation contract.
 
 ### Campus ticketing made simpler, fairer and more accessible

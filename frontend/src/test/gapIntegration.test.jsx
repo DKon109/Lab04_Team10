@@ -123,6 +123,8 @@ describe('Final Integration Tests', () => {
     
     // Make it a numbered venue
     fireEvent.click(screen.getByLabelText(/Seats are numbered/i));
+    fireEvent.change(screen.getByLabelText('Accessible seat codes'), { target: { value: 'A1, A2' } });
+    fireEvent.change(screen.getByLabelText('Blocked seat codes'), { target: { value: 'B3' } });
     
     // Choose General admission
     fireEvent.click(screen.getByLabelText(/General admission/i));
@@ -141,7 +143,7 @@ describe('Final Integration Tests', () => {
         expect.objectContaining({
           method: 'PUT',
           body: expect.objectContaining({
-            identifiersConfirmed: false
+            identifiersConfirmed: false, accessibleCodes: ['A1', 'A2'], blockedCodes: ['B3']
           })
         })
       );

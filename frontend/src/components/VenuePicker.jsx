@@ -25,7 +25,7 @@ export function buildRoomLayout(room) {
 
 export function buildTemplateLayout(template, config) {
   const capacity = (config.rows || 0) * (config.seatsPerRow || 0);
-  if (capacity <= 0) return null;
+  if (!Number.isInteger(config.rows) || !Number.isInteger(config.seatsPerRow) || config.rows < 1 || config.rows > 20 || config.seatsPerRow < 1 || config.seatsPerRow > 20 || capacity > 300) return null;
   return {
     mode: 'external',
     templateId: template.id,
@@ -35,6 +35,9 @@ export function buildTemplateLayout(template, config) {
     rows: config.rows,
     seatsPerRow: config.seatsPerRow,
     hasNumberedSeats: config.hasNumberedSeats,
+    aisleAfter: config.aisleAfter || 0,
+    blockedCodes: config.blockedCodes || '',
+    accessibleCodes: config.accessibleCodes || '',
   };
 }
 
@@ -46,6 +49,9 @@ export function VenuePicker({ value, onSelect }) {
     rows: value?.rows || 6,
     seatsPerRow: value?.seatsPerRow || 10,
     hasNumberedSeats: value?.hasNumberedSeats || false,
+    aisleAfter: value?.aisleAfter || 0,
+    blockedCodes: value?.blockedCodes || '',
+    accessibleCodes: value?.accessibleCodes || '',
   });
 
   const [realRooms, setRealRooms] = useState([]);
@@ -107,11 +113,11 @@ export function VenuePicker({ value, onSelect }) {
 
   const capacity = mode === 'usyd' ? room?.capacity || 0 : (config.rows || 0) * (config.seatsPerRow || 0);
 
-  function emit(layout) { if (layout && onSelect) onSelect(layout); }
+  function emit(layout) { onSelect?.(layout); }
   function pickMode(next) {
     setMode(next);
-    if (next === 'usyd' && room) emit(buildRoomLayout(room));
-    if (next === 'external' && template) emit(buildTemplateLayout(template, config));
+    if (next === 'usyd') emit(room ? buildRoomLayout(room) : null);
+    if (next === 'external') emit(template ? buildTemplateLayout(template, config) : null);
   }
   function pickRoom(id) {
     setRoomId(id);
@@ -178,6 +184,11 @@ export function VenuePicker({ value, onSelect }) {
               <label className="venue-checkbox">
                 <input type="checkbox" checked={config.hasNumberedSeats} onChange={(e) => updateConfig({ hasNumberedSeats: e.target.checked })} /> Seats are numbered
               </label>
+              <label className="field">Aisle after seat number (0 = none)<input type="number" min="0" max={config.seatsPerRow - 1} value={config.aisleAfter} onChange={e => updateConfig({ aisleAfter: Number(e.target.value) })} /></label>
+              <label className="field">Blocked seat codes<input value={config.blockedCodes} onChange={e => updateConfig({ blockedCodes: e.target.value })} placeholder="B3, B4" /></label>
+              <label className="field">Accessible seat codes<input value={config.accessibleCodes} onChange={e => updateConfig({ accessibleCodes: e.target.value })} placeholder="A1, A2" /></label>
+              <p className="subtle">Up to 20 rows, 20 seats per row and 300 total positions. Seat codes use row letters and numbers (A1, A2). Accessible positions must match the physical venue. Capacity excludes blocked seats when saved.</p>
+              {!buildTemplateLayout(template, config) && <p role="alert">Enter valid dimensions within these limits before continuing.</p>}
             </div>
           )}
         </>

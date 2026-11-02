@@ -17,7 +17,8 @@ public class SeatingService {
     public record SeatView(long id, String code, String section, int row, int column, boolean blocked, boolean accessible) {}
     public record LayoutView(String source, String template, String roomId, int rows, int seatsPerRow, int aisleAfter,
             int version, List<SeatView> seats) {}
-    public record ManagementView(EventResponse event, LayoutView layout, AllocationRun allocation, long confirmedBookings, long unverifiedLegacyBookings) {}
+    public record ManagementView(EventResponse event, LayoutView layout, AllocationRun allocation, long confirmedBookings, long unverifiedLegacyBookings,
+            SeatingMapManagementService.SeatMapView managedMap) {}
     public record TicketView(BookingResponse booking, LocalDateTime eventDate, String venue, String paymentStatus,
             String seatCode, String splitReason, boolean generalAdmission, LayoutView layout, SeatingMapManagementService.SeatMapView managedMap) {}
     public record CampusProfile(String id, String name, String template, int rows, int seatsPerRow, String notice) {}
@@ -301,7 +302,8 @@ public class SeatingService {
         long confirmed = confirmedBookings(event.getId()).size();
         long active = bookings.countByEventIdAndStatusNot(event.getId(), BookingStatus.CANCELLED);
         return new ManagementView(EventResponse.fromEntity(event), layouts.findById(event.getId()).map(this::layoutView).orElse(null),
-                runs.findById(event.getId()).orElse(null), confirmed, Math.max(0, active - confirmed));
+                runs.findById(event.getId()).orElse(null), confirmed, Math.max(0, active - confirmed),
+                managedMaps.existsById(event.getId()) ? mapManagement.organiserMap(event.getId(), event.getOwner().getEmail()) : null);
     }
     private Set<Long> confirmedIds(Long eventId) {
         return attempts.findByEventIdAndOutcome(eventId, MockCheckoutRequest.Outcome.SUCCESS).stream().map(CheckoutAttempt::getBookingId).filter(Objects::nonNull).collect(Collectors.toSet());
