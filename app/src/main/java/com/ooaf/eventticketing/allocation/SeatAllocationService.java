@@ -17,8 +17,11 @@ import java.util.stream.Collectors;
 @Service
 public class SeatAllocationService {
 
+    // Rows nearest the stage come first across every section, so one section is not filled to the
+    // back before the front of another is used.
     private static final Comparator<AllocationSeat> SEAT_ORDER = Comparator
-            .comparing(AllocationSeat::section, String.CASE_INSENSITIVE_ORDER)
+            .comparingInt(AllocationSeat::stageRow)
+            .thenComparing(AllocationSeat::section, String.CASE_INSENSITIVE_ORDER)
             .thenComparingInt(AllocationSeat::rowIndex)
             .thenComparing(AllocationSeat::rowLabel, String.CASE_INSENSITIVE_ORDER)
             .thenComparingInt(AllocationSeat::seatNumber)
@@ -27,6 +30,9 @@ public class SeatAllocationService {
     private static final Comparator<AllocationBooking> BOOKING_ORDER = Comparator
             .comparing(AllocationBooking::accessibilityRequired).reversed()
             .thenComparing(AllocationBooking::bookingId);
+
+    /** Rows a whole-group block may move back to avoid leaving one single empty seat. */
+    private static final double ISOLATED_SEAT_ROW_COST = 2.0;
 
     public AllocationResult allocate(
             List<AllocationBooking> bookings,
@@ -216,9 +222,16 @@ public class SeatAllocationService {
         return Comparator
                 .comparingLong((List<AllocationSeat> candidate) ->
                         accessibleCount(candidate) - accessibleNeeded)
-                .thenComparingInt(candidate -> AllocationTopology.isolatedSeats(available,
-                        candidate.stream().map(AllocationSeat::seatId).collect(Collectors.toSet())))
+                // Nearer the stage is better, but each single empty seat left behind costs two rows.
+                .thenComparingDouble(candidate -> candidate.get(0).stageRow()
+                        + ISOLATED_SEAT_ROW_COST * isolatedSeats(available, candidate))
+                .thenComparingInt(candidate -> isolatedSeats(available, candidate))
                 .thenComparing(candidate -> candidate.get(0), SEAT_ORDER);
+    }
+
+    private int isolatedSeats(List<AllocationSeat> available, List<AllocationSeat> candidate) {
+        return AllocationTopology.isolatedSeats(available,
+                candidate.stream().map(AllocationSeat::seatId).collect(Collectors.toSet()));
     }
 
     private List<AllocationSeat> findNearestCluster(
