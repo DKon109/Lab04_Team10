@@ -186,6 +186,33 @@ class SeatAllocationServiceTest {
     }
 
     @Test
+    void rejectsDuplicateBookingAndSeatIds() {
+        var seats = row("A", 0, 1, 3);
+        assertThrows(IllegalArgumentException.class, () -> service.allocate(List.of(
+                booking(1L, null, false), booking(1L, null, false)), seats));
+        var duplicateSeats = new ArrayList<>(seats);
+        duplicateSeats.add(seat(1L, "B", 1, 1, false, false));
+        assertThrows(IllegalArgumentException.class, () -> service.allocate(List.of(
+                booking(1L, null, false)), duplicateSeats));
+    }
+
+    @Test
+    void rejectsMissingInputsAndStrategy() {
+        var seats = row("A", 0, 1, 3);
+        var bookings = List.of(booking(1L, null, false));
+        assertThrows(IllegalArgumentException.class, () -> service.allocate(null, seats));
+        assertThrows(IllegalArgumentException.class, () -> service.allocate(bookings, null));
+        assertThrows(NullPointerException.class, () -> service.allocate(bookings, seats, null));
+    }
+
+    @Test
+    void emptyBookingSetProducesNoAssignments() {
+        var result = service.allocate(List.of(), row("A", 0, 1, 3));
+        assertTrue(result.assignments().isEmpty());
+        assertTrue(result.splits().isEmpty());
+    }
+
+    @Test
     void splitPlacementPrefersSameRowOverLowerDistanceAcrossRows() {
         var result = service.allocate(List.of(new AllocationBooking(1L, "PAIR", false, 1L),
                         booking(2L, "PAIR", false)),
