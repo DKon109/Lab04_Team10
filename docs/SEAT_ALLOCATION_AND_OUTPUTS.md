@@ -14,7 +14,7 @@ The requirements come from the Proposal's functional-requirements table (page 5)
 | **FR-19** | Publish an assigned-seat map and digital ticket after allocation. | Booking-owner ticket endpoint returns the stored seat, split explanation and legacy or managed map. | `SeatingIntegrationTest` |
 | **FR-20** | Let the organiser view allocation metrics and export an anonymised seating plan. | Owner-only metrics, existing CSV export and new backend-generated printable HTML export. | `SeatingIntegrationTest`, `PrintableSeatingPlanIntegrationTest`, `AnonymousSeatingPlanRendererTest` |
 
-The allocator, persistence and ticket APIs already existed. The recent backend changes add `elapsedMillis` to the metrics response and introduce the printable-document endpoint and renderer. They do not add application pages, frontend routes, JSX changes, database migrations or dependencies. The existing dashboard has not been updated to select a metrics event or display the additional fields; frontend presentation remains separate integration work.
+The allocator, persistence and ticket APIs already existed. The recent backend changes add `elapsedMillis` to the metrics response and introduce the printable-document endpoint and renderer. They do not add database migrations or dependencies. In the frontend, the organiser dashboard lets the organiser select an event and shows its metrics through `AllocationMetrics`, including `elapsedMillis`. The event seating page downloads the printable plan with the organiser's bearer token.
 
 ## 2. Complete backend journey
 
