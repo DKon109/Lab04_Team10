@@ -72,6 +72,15 @@ A contiguous row block consists of consecutive seat numbers within the same elem
 
 The allocator processes larger groups first, seeks a complete valid placement, and preserves accessible capacity needed by remaining attendees. Existing managed assignments act as fixed anchors. Deterministic ordering resolves equivalent candidates consistently.
 
+### Stage-first seat order
+
+Seats are ordered by distance from the stage before section, so rows nearest the stage are used in every section before any section is filled further back. Stage distance is measured in rows:
+
+- Managed maps and legacy FRONT/FAN layouts treat row index 0 as the row nearest the stage.
+- Central-stage layouts restart the count on each side. In a legacy CENTRAL layout, the last North row and the first South row are both nearest the stage. In a managed map with `North`/`South` sections, South depth restarts at the first South row.
+
+When choosing a contiguous block for a whole group, the allocator prefers the block nearest the stage, but each single empty seat the block would leave behind costs two rows. A group can therefore move up to two rows back to avoid stranding one seat. Accessible-seat matching is still decided before stage distance, and fallback placement for split groups follows the same stage-first order.
+
 ```mermaid
 flowchart TD
     A[Load confirmed bookings and seat graph] --> B[Validate IDs and existing assignments]
