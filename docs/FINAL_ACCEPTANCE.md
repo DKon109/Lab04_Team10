@@ -82,6 +82,29 @@ Frontend: `cd frontend`, `npm ci`, `npm test`, `npm run build`, `npm audit`.
 
 ## Live application
 
+Final integration PR: https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/pull/26
+
+The production Docker rebuild and `smoke-final.ps1` completed successfully on
+2 November against application revision `a38a8a2` (same runtime code as `bc0fd5a`).
+All seven additional venue cases and the original checkout/privacy/retry journey
+passed through real HTTP and the retained application database:
+
+| Case | Local event ID | Local attendee ticket | Allocation processing (ms) |
+| --- | --- | --- | --- |
+| Original accessible group/retry walkthrough | 34 | `/bookings/9/ticket` | 71 |
+| FRONT | 35 | `/bookings/11/ticket` | 31 |
+| FAN | 36 | `/bookings/13/ticket` | 37 |
+| CENTRAL | 37 | `/bookings/15/ticket` | 30 |
+| General admission | 38 | `/bookings/17/ticket` | 85 |
+| Everest managed campus map | 39 | `/bookings/18/ticket` | 320 |
+| Reginald managed campus map | 40 | `/bookings/20/ticket` | 49 |
+| York managed campus map | 41 | `/bookings/22/ticket` | 169 |
+
+These are small synthetic smoke fixtures, not the 300-attendee benchmarks. Local
+IDs vary on another database. The script verified managed-map readback, deferred
+assignment, admission-mode contracts and CSV/print anonymity. The final local
+frontend and backend are running; the dedicated disposable test DB is stopped.
+
 From the repository root with Docker Desktop running:
 
 ```powershell

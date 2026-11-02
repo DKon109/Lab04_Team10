@@ -34,6 +34,7 @@ Primary audiences are students attending university events and society, faculty 
 
 - Proposal: `Tixora Project Proposal 2026.pdf`, sections 1, 3–6 and 8–10. This is the submitted scope source, rather than the older Sprint 0 README roadmap.
 - PR #12: attendee experience, checkout and persisted seating integration. PRs #22–23: later event/venue and frontend integration. PRs #24–25: allocation coverage, stage ordering and printable outputs.
+- PR #26: final workflow fixes, allocation search optimisation, acceptance script and Tejas report handoff: https://github.sydney.edu.au/2026S2-Object-Oriented-App-Frameworks/Lab04_Team10/pull/26. Fresh validation: 311 backend / 95 frontend tests and all eight live HTTP smoke journeys passed. See `FINAL_ACCEPTANCE.md` for timings and local ticket references.
 - Attendee source: `frontend/src/pages/{AuthPage,EventsPage,BookingPage,MyBookingsPage,TicketAndSeatMapView}.jsx`, `frontend/src/components/events/EventDetailsModal.jsx`, `frontend/src/context/AuthContext.jsx`.
 - Organiser source: `frontend/src/pages/{EventCreationWizard,EventSeatingPage,OrganiserDashboard}.jsx`, `frontend/src/components/VenuePicker.jsx`.
 - Backend evidence: `service/{EventService,MockCheckoutService,SeatingService,SeatingMapManagementService,CampusVenueTemplateService}.java`, `allocation/SeatAllocationService.java` beneath `app/src/main/java/com/ooaf/eventticketing/`.
