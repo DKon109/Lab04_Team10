@@ -50,85 +50,83 @@ public class CampusVenueTemplateService {
             String rowLabel,
             String section,
             int firstSeat,
-            int lastSeat,
-            double firstSeatX,
-            double positionY
+            int lastSeat
     ) {
     }
 
     private static final List<YorkRowBlock> YORK_ROW_BLOCKS = List.of(
-            // Application block names and coordinates are schematic.
-            new YorkRowBlock("A", "Block1", 1, 9, 0.0, 0.0),
-            new YorkRowBlock("A", "Block2", 13, 19, 300.0, 0.0),
-            new YorkRowBlock("A", "Block3", 34, 40, 800.0, 0.0),
-            new YorkRowBlock("A", "Block4", 57, 63, 1300.0, 0.0),
-            new YorkRowBlock("A", "Block5", 78, 86, 1800.0, 0.0),
+            // Block names are application labels; seat ranges follow the published plan.
+            new YorkRowBlock("A", "Block1", 1, 9),
+            new YorkRowBlock("A", "Block2", 13, 19),
+            new YorkRowBlock("A", "Block3", 34, 40),
+            new YorkRowBlock("A", "Block4", 57, 63),
+            new YorkRowBlock("A", "Block5", 78, 86),
 
-            new YorkRowBlock("B", "Block1", 1, 10, 0.0, 40.0),
-            new YorkRowBlock("B", "Block2", 13, 20, 300.0, 40.0),
-            new YorkRowBlock("B", "Block3", 34, 41, 800.0, 40.0),
-            new YorkRowBlock("B", "Block4", 57, 64, 1300.0, 40.0),
-            new YorkRowBlock("B", "Block5", 78, 87, 1800.0, 40.0),
+            new YorkRowBlock("B", "Block1", 1, 10),
+            new YorkRowBlock("B", "Block2", 13, 20),
+            new YorkRowBlock("B", "Block3", 34, 41),
+            new YorkRowBlock("B", "Block4", 57, 64),
+            new YorkRowBlock("B", "Block5", 78, 87),
 
-            new YorkRowBlock("C", "Block1", 1, 10, 0.0, 80.0),
-            new YorkRowBlock("C", "Block2", 13, 22, 300.0, 80.0),
-            new YorkRowBlock("C", "Block3", 34, 43, 800.0, 80.0),
-            new YorkRowBlock("C", "Block4", 57, 66, 1300.0, 80.0),
-            new YorkRowBlock("C", "Block5", 78, 87, 1800.0, 80.0),
+            new YorkRowBlock("C", "Block1", 1, 10),
+            new YorkRowBlock("C", "Block2", 13, 22),
+            new YorkRowBlock("C", "Block3", 34, 43),
+            new YorkRowBlock("C", "Block4", 57, 66),
+            new YorkRowBlock("C", "Block5", 78, 87),
 
-            new YorkRowBlock("D", "Block1", 1, 11, 0.0, 120.0),
-            new YorkRowBlock("D", "Block2", 13, 23, 300.0, 120.0),
-            new YorkRowBlock("D", "Block3", 34, 44, 800.0, 120.0),
-            new YorkRowBlock("D", "Block4", 57, 67, 1300.0, 120.0),
-            new YorkRowBlock("D", "Block5", 78, 88, 1800.0, 120.0),
+            new YorkRowBlock("D", "Block1", 1, 11),
+            new YorkRowBlock("D", "Block2", 13, 23),
+            new YorkRowBlock("D", "Block3", 34, 44),
+            new YorkRowBlock("D", "Block4", 57, 67),
+            new YorkRowBlock("D", "Block5", 78, 88),
 
-            new YorkRowBlock("E", "Block1", 1, 11, 0.0, 160.0),
-            new YorkRowBlock("E", "Block2", 13, 24, 300.0, 160.0),
-            new YorkRowBlock("E", "Block3", 34, 45, 800.0, 160.0),
-            new YorkRowBlock("E", "Block4", 57, 68, 1300.0, 160.0),
-            new YorkRowBlock("E", "Block5", 78, 88, 1800.0, 160.0),
+            new YorkRowBlock("E", "Block1", 1, 11),
+            new YorkRowBlock("E", "Block2", 13, 24),
+            new YorkRowBlock("E", "Block3", 34, 45),
+            new YorkRowBlock("E", "Block4", 57, 68),
+            new YorkRowBlock("E", "Block5", 78, 88),
 
-            new YorkRowBlock("F", "Block1", 1, 11, 0.0, 200.0),
-            new YorkRowBlock("F", "Block2", 13, 26, 300.0, 200.0),
-            new YorkRowBlock("F", "Block3", 34, 46, 800.0, 200.0),
-            new YorkRowBlock("F", "Block4", 57, 70, 1300.0, 200.0),
-            new YorkRowBlock("F", "Block5", 78, 88, 1800.0, 200.0),
+            new YorkRowBlock("F", "Block1", 1, 11),
+            new YorkRowBlock("F", "Block2", 13, 26),
+            new YorkRowBlock("F", "Block3", 34, 46),
+            new YorkRowBlock("F", "Block4", 57, 70),
+            new YorkRowBlock("F", "Block5", 78, 88),
 
-            new YorkRowBlock("G", "Block1", 1, 11, 0.0, 240.0),
-            new YorkRowBlock("G", "Block2", 13, 27, 300.0, 240.0),
-            new YorkRowBlock("G", "Block3", 34, 48, 800.0, 240.0),
-            new YorkRowBlock("G", "Block4", 57, 71, 1300.0, 240.0),
-            new YorkRowBlock("G", "Block5", 78, 88, 1800.0, 240.0),
+            new YorkRowBlock("G", "Block1", 1, 11),
+            new YorkRowBlock("G", "Block2", 13, 27),
+            new YorkRowBlock("G", "Block3", 34, 48),
+            new YorkRowBlock("G", "Block4", 57, 71),
+            new YorkRowBlock("G", "Block5", 78, 88),
 
-            new YorkRowBlock("H", "Block1", 1, 11, 0.0, 280.0),
-            new YorkRowBlock("H", "Block2", 13, 28, 300.0, 280.0),
-            new YorkRowBlock("H", "Block3", 34, 49, 800.0, 280.0),
-            new YorkRowBlock("H", "Block4", 57, 73, 1300.0, 280.0),
-            new YorkRowBlock("H", "Block5", 78, 88, 1800.0, 280.0),
+            new YorkRowBlock("H", "Block1", 1, 11),
+            new YorkRowBlock("H", "Block2", 13, 28),
+            new YorkRowBlock("H", "Block3", 34, 49),
+            new YorkRowBlock("H", "Block4", 57, 73),
+            new YorkRowBlock("H", "Block5", 78, 88),
 
-            new YorkRowBlock("J", "Block1", 1, 11, 0.0, 320.0),
-            new YorkRowBlock("J", "Block2", 13, 30, 300.0, 320.0),
-            new YorkRowBlock("J", "Block3", 34, 51, 800.0, 320.0),
-            new YorkRowBlock("J", "Block4", 57, 74, 1300.0, 320.0),
-            new YorkRowBlock("J", "Block5", 78, 88, 1800.0, 320.0),
+            new YorkRowBlock("J", "Block1", 1, 11),
+            new YorkRowBlock("J", "Block2", 13, 30),
+            new YorkRowBlock("J", "Block3", 34, 51),
+            new YorkRowBlock("J", "Block4", 57, 74),
+            new YorkRowBlock("J", "Block5", 78, 88),
 
-            new YorkRowBlock("K", "Block1", 1, 11, 0.0, 360.0),
-            new YorkRowBlock("K", "Block2", 13, 32, 300.0, 360.0),
-            new YorkRowBlock("K", "Block3", 34, 53, 800.0, 360.0),
-            new YorkRowBlock("K", "Block4", 57, 76, 1300.0, 360.0),
-            new YorkRowBlock("K", "Block5", 78, 88, 1800.0, 360.0),
+            new YorkRowBlock("K", "Block1", 1, 11),
+            new YorkRowBlock("K", "Block2", 13, 32),
+            new YorkRowBlock("K", "Block3", 34, 53),
+            new YorkRowBlock("K", "Block4", 57, 76),
+            new YorkRowBlock("K", "Block5", 78, 88),
 
-            new YorkRowBlock("L", "Block1", 1, 12, 0.0, 400.0),
-            new YorkRowBlock("L", "Block2", 13, 33, 300.0, 400.0),
-            new YorkRowBlock("L", "Block3", 34, 54, 800.0, 400.0),
-            new YorkRowBlock("L", "Block4", 57, 77, 1300.0, 400.0),
-            new YorkRowBlock("L", "Block5", 78, 89, 1800.0, 400.0),
+            new YorkRowBlock("L", "Block1", 1, 12),
+            new YorkRowBlock("L", "Block2", 13, 33),
+            new YorkRowBlock("L", "Block3", 34, 54),
+            new YorkRowBlock("L", "Block4", 57, 77),
+            new YorkRowBlock("L", "Block5", 78, 89),
 
-            new YorkRowBlock("M", "Block1", 1, 12, 0.0, 440.0),
-            new YorkRowBlock("M", "Block2", 13, 33, 300.0, 440.0),
-            new YorkRowBlock("M", "Block3", 34, 56, 800.0, 440.0),
-            new YorkRowBlock("M", "Block4", 57, 77, 1300.0, 440.0),
-            new YorkRowBlock("M", "Block5", 78, 89, 1800.0, 440.0)
+            new YorkRowBlock("M", "Block1", 1, 12),
+            new YorkRowBlock("M", "Block2", 13, 33),
+            new YorkRowBlock("M", "Block3", 34, 56),
+            new YorkRowBlock("M", "Block4", 57, 77),
+            new YorkRowBlock("M", "Block5", 78, 89)
     );
 
     private record EverestRow(
@@ -235,45 +233,34 @@ public class CampusVenueTemplateService {
 
         for (int index = 0; index < EVEREST_ROWS.size(); index++) {
             EverestRow row = EVEREST_ROWS.get(index);
-            double positionY = index * 40.0;
 
             if (row.rightFirst() > 0) {
-                double firstSeatX =
-                        340.0 + (11 - row.rightFirst()) * 20.0;
-
                 elements.add(createRowBlock(
-                        "Right", row.label(), index,
-                        row.rightFirst(), row.rightLast(),
-                        firstSeatX, positionY, accessibleCodes
+                        "Right", row, index,
+                        row.rightFirst(), row.rightLast(), accessibleCodes
                 ));
             }
 
             if ("S".equals(row.label()) || "T".equals(row.label())) {
                 // Seats 17 to 21 are absent around the sound booth.
                 elements.add(createRowBlock(
-                        "Centre", row.label(), index,
-                        12, 16,
-                        280.0, positionY, accessibleCodes
+                        "Centre", row, index, 12, 16, accessibleCodes
                 ));
 
                 elements.add(createRowBlock(
-                        "Centre", row.label(), index,
-                        22, 26,
-                        80.0, positionY, accessibleCodes
+                        "Centre", row, index, 22, 26, accessibleCodes
                 ));
             } else {
                 elements.add(createRowBlock(
-                        "Centre", row.label(), index,
-                        row.centreFirst(), row.centreLast(),
-                        280.0, positionY, accessibleCodes
+                        "Centre", row, index,
+                        row.centreFirst(), row.centreLast(), accessibleCodes
                 ));
             }
 
             if (row.leftFirst() > 0) {
                 elements.add(createRowBlock(
-                        "Left", row.label(), index,
-                        row.leftFirst(), row.leftLast(),
-                        -60.0, positionY, accessibleCodes
+                        "Left", row, index,
+                        row.leftFirst(), row.leftLast(), accessibleCodes
                 ));
             }
         }
@@ -313,40 +300,73 @@ public class CampusVenueTemplateService {
         );
     }
 
+    // Everest geometry traced from the published plan (pixels, stage below row A), scaled so seats sit
+    // about 20 units apart. The centre block faces the stage; the side blocks slope down towards the
+    // outer walls, and row T starts one seat further out on both sides.
+    private static final double EVEREST_SCALE = 20.0 / 39.6;
+
+    private static double[] everestSeatPosition(EverestRow row, int rowIndex, String section, int number) {
+        double rowY = 888.0 - rowIndex * 42.2;
+        int shift = "T".equals(row.label()) ? 1 : 0;
+        double x;
+        double y = rowY;
+        switch (section) {
+            case "Right" -> {
+                int fromAisle = 11 - number + shift;
+                x = 1247.0 + fromAisle * 39.4;
+                y = rowY + fromAisle * 8.6;
+            }
+            case "Left" -> {
+                int fromAisle = number - 27 + shift;
+                x = 378.0 - fromAisle * 39.4;
+                y = rowY + fromAisle * 8.6;
+            }
+            default -> {
+                // 14-seat rows (B and D) span the same width as the 15-seat rows.
+                double pitch = (1092.0 - 535.0) / (row.centreLast() - 12);
+                x = 535.0 + (row.centreLast() - number) * pitch;
+            }
+        }
+        return new double[] {
+                Math.round((x - 60.0) * EVEREST_SCALE * 10.0) / 10.0,
+                Math.round((y - 190.0) * EVEREST_SCALE * 10.0) / 10.0
+        };
+    }
+
     private SeatMapRequest.ElementRequest createRowBlock(
             String section,
-            String rowLabel,
+            EverestRow row,
             int rowIndex,
             int firstSeat,
             int lastSeat,
-            double firstSeatX,
-            double positionY,
             Set<String> accessibleCodes
     ){
         var seats = new ArrayList<SeatMapRequest.SeatRequest>();
+        String rowLabel = row.label();
 
         for(int number = firstSeat; number <= lastSeat; number++){
             String code = rowLabel + number;
-            double positionX = firstSeatX - (number - firstSeat) * 20.0;
+            double[] position = everestSeatPosition(row, rowIndex, section, number);
 
             seats.add(createSeat(
                     section,
                     rowLabel,
                     rowIndex,
                     number,
-                    positionX,
-                    positionY,
+                    position[0],
+                    position[1],
                     accessibleCodes.contains(code)
             ));
         }
 
+        double[] first = everestSeatPosition(row, rowIndex, section, firstSeat);
         return new SeatMapRequest.ElementRequest(
                 section + "-" + rowLabel + "-" + firstSeat,
                 SeatingElementType.ROW,
                 rowLabel + " - " + section,
                 null,
-                firstSeatX,
-                positionY,
+                first[0],
+                first[1],
                 0,
                 rowIndex,
                 false,
@@ -383,7 +403,7 @@ public class CampusVenueTemplateService {
                 "reginald-" + section + "-" + rowLabel + "-" + firstSeat,
                 SeatingElementType.ROW,
                 rowLabel + " - " + section,
-                "Schematic coordinates based on the published seating plan; "
+                "Seat positions follow the published seating plan; "
                 + "physical accessibility is not verified.",
                 firstSeatX,
                 positionY,
@@ -399,7 +419,10 @@ public class CampusVenueTemplateService {
 
         for (int index = 0; index < REGINALD_ROWS.size(); index++) {
             String rowLabel = REGINALD_ROWS.get(index);
-            double positionY = index * 40.0;
+            // Row heights traced from the published plan (pixels, stage below row A; row J sits
+            // behind a wider gap), scaled to the 20-unit seat pitch.
+            double planY = "J".equals(rowLabel) ? 33.0 : 497.0 - index * 52.0;
+            double positionY = Math.round(planY * 20.0 / 49.2 * 10.0) / 10.0;
 
             if ("J".equals(rowLabel)) {
                 // The published plan shows a continuous rear row.
@@ -426,6 +449,45 @@ public class CampusVenueTemplateService {
         return List.copyOf(elements);
     }
 
+    // York geometry traced from the published plan (pixels, stage at the bottom), scaled so seats sit
+    // 20 units apart. Block3 faces the stage in straight rows, Blocks 2 and 4 run on diagonals and
+    // Blocks 1 and 5 are vertical columns; left-hand blocks mirror the right-hand ones.
+    private static final double YORK_SCALE = 20.0 / 27.0;
+    private static final double YORK_MIRROR_X = 1820.0;
+    private static final double[] YORK_COLUMN_SEAT_ONE_Y =
+            {1140, 1137, 1125, 1123, 1105, 1080, 1060, 1037, 1015, 1003, 993, 970};
+
+    private static double[] yorkSeatPosition(YorkRowBlock block, int rowIndex, int number) {
+        double x;
+        double y;
+        switch (block.section()) {
+            case "Block3" -> {
+                x = 910.0 + ((block.firstSeat() + block.lastSeat()) / 2.0 - number) * 27.0;
+                y = 686.0 - rowIndex * 46.8;
+            }
+            case "Block2", "Block4" -> {
+                // Steps from the outer end of the diagonal: seat 13 on the right, the last seat on the left.
+                int fromOuterEnd = "Block2".equals(block.section())
+                        ? number - block.firstSeat() : block.lastSeat() - number;
+                x = 1186.0 + rowIndex * 46.7 - fromOuterEnd * 19.0;
+                y = 824.0 - rowIndex * 19.3 - fromOuterEnd * 19.4;
+                if ("Block4".equals(block.section())) x = YORK_MIRROR_X - x;
+            }
+            default -> {
+                // Columns rise from the rear wall: seat 1 on the right, the last seat on the left.
+                int fromRear = "Block1".equals(block.section())
+                        ? number - block.firstSeat() : block.lastSeat() - number;
+                x = 1228.0 + rowIndex * 46.2;
+                y = YORK_COLUMN_SEAT_ONE_Y[rowIndex] - fromRear * 27.3;
+                if ("Block5".equals(block.section())) x = YORK_MIRROR_X - x;
+            }
+        }
+        return new double[] {
+                Math.round((x - 560.0) * YORK_SCALE * 10.0) / 10.0,
+                Math.round((y - 160.0) * YORK_SCALE * 10.0) / 10.0
+        };
+    }
+
     private SeatMapRequest.ElementRequest createYorkRowBlock(
             YorkRowBlock block,
             int rowIndex
@@ -434,27 +496,28 @@ public class CampusVenueTemplateService {
 
         for (int number = block.firstSeat();
         number <= block.lastSeat(); number++){
-            double positionX = block.firstSeatX() + (number - block.firstSeat()) * 20.0;
+            double[] position = yorkSeatPosition(block, rowIndex, number);
 
             seats.add(createSeat(
                     block.section(),
                     block.rowLabel(),
                     rowIndex,
                     number,
-                    positionX,
-                    block.positionY(),
+                    position[0],
+                    position[1],
                     false
             ));
         }
 
+        double[] first = yorkSeatPosition(block, rowIndex, block.firstSeat());
         return new SeatMapRequest.ElementRequest(
                 "york-" + block.section() + "-" + block.rowLabel() + "-" + block.firstSeat(),
                 SeatingElementType.ROW,
                 block.rowLabel() + " - " + block.section(),
-                "Schematic block layout; venue angles and dimensions "
-                + "are not reproduced. Accessibility is not verified.",
-                block.firstSeatX(),
-                block.positionY(),
+                "Seat positions traced from the published seating plan; "
+                + "dimensions are approximate. Accessibility is not verified.",
+                first[0],
+                first[1],
                 0,
                 rowIndex,
                 false,

@@ -14,7 +14,7 @@ The requirements come from the Proposal's functional-requirements table (page 5)
 | **FR-19** | Publish an assigned-seat map and digital ticket after allocation. | Booking-owner ticket endpoint returns the stored seat, split explanation and legacy or managed map. | `SeatingIntegrationTest` |
 | **FR-20** | Let the organiser view allocation metrics and export an anonymised seating plan. | Owner-only metrics, existing CSV export and new backend-generated printable HTML export. | `SeatingIntegrationTest`, `PrintableSeatingPlanIntegrationTest`, `AnonymousSeatingPlanRendererTest` |
 
-The allocator, persistence and ticket APIs already existed. The recent backend changes add `elapsedMillis` to the metrics response and introduce the printable-document endpoint and renderer. They do not add application pages, frontend routes, JSX changes, database migrations or dependencies. The existing dashboard has not been updated to select a metrics event or display the additional fields; frontend presentation remains separate integration work.
+The allocator, persistence and ticket APIs already existed. The recent backend changes add `elapsedMillis` to the metrics response and introduce the printable-document endpoint and renderer. They do not add database migrations or dependencies. In the frontend, the organiser dashboard lets the organiser select an event and shows its metrics through `AllocationMetrics`, including `elapsedMillis`. The event seating page downloads the printable plan with the organiser's bearer token.
 
 ## 2. Complete backend journey
 
@@ -71,6 +71,15 @@ A repeated allocation request returns the saved run instead of reshuffling seats
 A contiguous row block consists of consecutive seat numbers within the same element, section, row index and row label. Gaps, aisles and element boundaries break a block. A group sharing one table also counts as **together**, including members on different table sides.
 
 The allocator processes larger groups first, seeks a complete valid placement, and preserves accessible capacity needed by remaining attendees. Existing managed assignments act as fixed anchors. Deterministic ordering resolves equivalent candidates consistently.
+
+### Stage-first seat order
+
+Seats are ordered by distance from the stage before section, so rows nearest the stage are used in every section before any section is filled further back. Stage distance is measured in rows:
+
+- Managed maps and legacy FRONT/FAN layouts treat row index 0 as the row nearest the stage.
+- Central-stage layouts restart the count on each side. In a legacy CENTRAL layout, the last North row and the first South row are both nearest the stage. In a managed map with `North`/`South` sections, South depth restarts at the first South row.
+
+When choosing a contiguous block for a whole group, the allocator prefers the block nearest the stage, but each single empty seat the block would leave behind costs two rows. A group can therefore move up to two rows back to avoid stranding one seat. Accessible-seat matching is still decided before stage distance, and fallback placement for split groups follows the same stage-first order.
 
 ```mermaid
 flowchart TD
@@ -236,9 +245,10 @@ sequenceDiagram
 The document contains:
 
 - Event title, date, venue, layout version and original allocation completion time.
-- A schematic overview with seat codes, assignment markers, unavailable positions, accessible outlines and preserved aisle gaps.
-- Additional row/table diagrams when the map contains more than 60 positions, so readers need not rely on the scaled overview.
-- A table joining plan references such as `P1` to booking references, group aliases, seat codes and split explanations.
+- Summary counts of assigned, empty and unavailable seats, groups and split groups.
+- One numbered seating overview. Each seat box shows its seat number, and each row carries its row letter at both ends. Boxes and labels follow angled or vertical rows. Unavailable positions, accessible outlines, dashed outlines for split groups and aisle gaps are shown. A stage is drawn in front of the first row when the layout does not map one. Large maps use the same overview instead of separate row/table diagrams.
+- One colour per group, chosen so that groups seated next to each other never share a colour. Solo bookings use a neutral colour.
+- A table matching each colour key to booking references, group aliases, seat codes and split explanations.
 - A general-admission explanation and reference table instead of a seat diagram when seats are not assigned.
 - A campus-demo notice for legacy demo profiles. All geometry remains schematic; an export does not establish physical venue verification.
 
@@ -308,7 +318,7 @@ The proposal's performance target is allocation of feasible datasets with up to 
 | `SeatingIntegrationTest` | Persisted assignments, replay behaviour, ticket privacy, managed-map integration and metrics/runtime API. |
 | `GeneralAdmissionPersistenceTest` | Committed general-admission booking/allocation retrieval across transactions. |
 | `PrintableSeatingPlanIntegrationTest` | All three legacy template families, managed geometry, general admission, owner access, pre-allocation rejection, anonymous references and escaped event text. |
-| `AnonymousSeatingPlanRendererTest` | Escaping of HTML/SVG text and a 300-position document with row details and 280 assignment references. |
+| `AnonymousSeatingPlanRendererTest` | Escaping of HTML/SVG text; a 300-position document with 280 assignment references, seat numbers, row labels and distinct colours for neighbouring groups; split-group outlines and the drawn stage; angled and vertical rows. |
 | `AllocationBenchmarkTest` | Timed allocation/flush across varied supported layouts, strategies and group sizes, with correctness checks. |
 
 Run the feature checks from the `app` directory:
