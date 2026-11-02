@@ -34,6 +34,19 @@ export default function EventSeatingPage() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, 'Anonymous allocation CSV downloaded. No attendee names or emails are included.');
   }
+  async function downloadPrint() {
+    await action(async () => {
+      const token = sessionStorage.getItem('tixora.token');
+      const response = await fetch(`/api/organiser/events/${eventId}/allocation/print`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!response.ok) throw new Error('Failed to download printable plan');
+      const htmlText = await response.text();
+      const blob = new Blob([htmlText], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url; link.download = `event-${eventId}-seating-plan.html`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'Printable seating plan downloaded.');
+  }
+
   const draft = data?.event.status === 'draft';
   return <><TopNav /><main className="page"><Link className="back-link" to="/organiser/dashboard">← My events</Link><div className="section-intro"><p className="eyebrow">ORGANISER WORKSPACE</p><h1>{data?.event.title || 'Event seating'}</h1><p>Configure. Publish. Close registration. Allocate.</p></div>
     {error && <div className="form-banner error" role="alert">{error} {!data && <button className="btn" onClick={() => setLoadVersion(v => v + 1)}>Try again</button>}</div>}
@@ -65,7 +78,17 @@ export default function EventSeatingPage() {
             </>}
             <button disabled={busy || !data.confirmedBookings} className="btn btn-primary" onClick={() => action(() => allocateSeats(eventId, data.event.seatIdentifiersConfirmed ? strategy : 'DEFAULT'), 'Allocation saved. Attendees can open their tickets now.')}>{busy ? 'Allocating…' : 'Run allocation'}</button>
           </>}
-          {data.allocation && <><p>Allocation preference: {data.allocation.strategy === 'PREFER_SAME_ROW' ? 'Prefer same row' : data.allocation.strategy === 'DEFAULT' ? 'Default' : 'Not recorded'}</p><p className="form-banner success">{data.allocation.bookingCount} tickets ready · {data.allocation.splitGroupCount} split groups · recorded processing {data.allocation.elapsedMillis} ms</p><p className="subtle">Allocation is final for this layout. Repeated requests return the same saved run.</p><button disabled={busy} className="btn btn-primary" onClick={download}>Download anonymous CSV</button></>}
+          {data.allocation && (
+            <>
+              <p>Allocation preference: {data.allocation.strategy === 'PREFER_SAME_ROW' ? 'Prefer same row' : data.allocation.strategy === 'DEFAULT' ? 'Default' : 'Not recorded'}</p>
+              <p className="form-banner success">{data.allocation.bookingCount} tickets ready · {data.allocation.splitGroupCount} split groups · recorded processing {data.allocation.elapsedMillis} ms</p>
+              <p className="subtle">Allocation is final for this layout. Repeated requests return the same saved run.</p>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <button disabled={busy} className="btn btn-primary" onClick={download}>Download anonymous CSV</button>
+                <button disabled={busy} className="btn btn-ghost" onClick={downloadPrint}>Download Printable Plan (HTML)</button>
+              </div>
+            </>
+          )}
         </div>
       </section></div></>}
   </main></>;
