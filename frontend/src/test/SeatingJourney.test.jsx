@@ -21,6 +21,19 @@ describe('persisted seating experience', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save venue configuration' }));
     expect(api.saveSeating).toHaveBeenCalledWith('1', expect.objectContaining({ source: 'EXTERNAL', template: 'FRONT', blockedCodes: ['B3', 'B4'], accessibleCodes: ['A1', 'A2'], identifiersConfirmed: true }));
   });
+  it('shows the persisted managed map instead of offering an incompatible legacy layout editor', async () => {
+    api.fetchSeating.mockResolvedValue({ ...management, managedMap: { name: 'Saved campus plan', version: 1, elements: [] } });
+    renderManagement();
+    expect(await screen.findByRole('img', { name: /Seat map: Saved campus plan/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save venue configuration' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/No map saved/)).not.toBeInTheDocument();
+  });
+  it('does not promise seat allocation for a general-admission ticket', async () => {
+    api.fetchTicket.mockResolvedValue({ booking: { eventTitle: 'Film night', bookingRef: 'BKG-GA', status: 'PENDING_ALLOCATION' }, paymentStatus: 'MOCK_SUCCESS', generalAdmission: true });
+    renderTicket();
+    expect(await screen.findByText(/General admission: no physical seat is assigned/)).toBeInTheDocument();
+    expect(screen.queryByText(/Waiting for the organiser/)).not.toBeInTheDocument();
+  });
   it('requires explicit confirmation before closing registrations', async () => {
     api.fetchSeating.mockResolvedValue({ ...management, event: { ...management.event, status: 'published' } });
     renderManagement(); await userEvent.click(await screen.findByRole('button', { name: 'Close registration…' }));
