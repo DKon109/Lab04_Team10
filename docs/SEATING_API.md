@@ -133,7 +133,7 @@ must send the bearer token.
 - Only active bookings linked to a recorded mock SUCCESS attempt participate. Unverified legacy bookings remain visibly flagged; they are not silently considered paid.
 - A database uniqueness constraint protects `(event_id, seat_code)`; general admission has null seat labels.
 - An aisle separates allocator sections, so a contiguous block cannot cross it. Blocked seats are excluded. Accessible capacity is reserved for later groups even when an earlier group would otherwise prefer a contiguous block using it.
-- The allocator is deterministic and uses the existing size-first heuristic. A split explanation means no suitable contiguous block remained at that stage; it is not a proof of globally optimal placement across every possible group ordering.
+- The allocator is deterministic and uses a size-first heuristic. It fills rows nearest the stage across all sections first, and moves a group back at most two rows to avoid leaving a single empty seat. See [stage-first seat order](SEAT_ALLOCATION_AND_OUTPUTS.md#stage-first-seat-order). A split explanation means no suitable contiguous block remained at that stage; it is not a proof of globally optimal placement across every possible group ordering.
 - On failure, no run or partial assignments are committed. Successful repeated allocation returns the original run; no reshuffling is offered.
 - General-admission tickets can be finalised after closure without inventing physical seat numbers.
 - Stored timestamps are truncated to MySQL microsecond precision so replayed results do not differ only because of database rounding.

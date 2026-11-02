@@ -9,8 +9,14 @@ public record AllocationSeat(
         boolean accessible,
         boolean blocked,
         Long elementId,
-        boolean table
+        boolean table,
+        int stageRow
 ) {
+    /** Without explicit stage depth, row index 0 is taken as the row nearest the stage. */
+    public AllocationSeat(Long seatId, String section, String rowLabel, int rowIndex,
+            int seatNumber, boolean accessible, boolean blocked, Long elementId, boolean table) {
+        this(seatId, section, rowLabel, rowIndex, seatNumber, accessible, blocked, elementId, table, rowIndex);
+    }
     public AllocationSeat(Long seatId, String section, String rowLabel, int rowIndex,
             int seatNumber, boolean accessible, boolean blocked, Long elementId) {
         this(seatId, section, rowLabel, rowIndex, seatNumber, accessible, blocked, elementId, false);
@@ -52,6 +58,9 @@ public record AllocationSeat(
         }
         if (rowIndex < 0 || seatNumber < 1) {
             throw new IllegalArgumentException("rowIndex and seatNumber must identify a valid seat");
+        }
+        if (stageRow < 0) {
+            throw new IllegalArgumentException("stageRow must not be negative");
         }
     }
 }
