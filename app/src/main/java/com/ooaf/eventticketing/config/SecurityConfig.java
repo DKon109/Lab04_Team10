@@ -101,6 +101,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/organiser/**")
                         .hasRole("COMMITTEE_MEMBER")
                         .requestMatchers("/error").permitAll()
+                        // Public application shell; API authorization above remains in force.
+                        .requestMatchers(HttpMethod.GET, "/", "/index.html", "/assets/**",
+                                "/auth", "/events", "/events/*/book", "/bookings", "/bookings/*/ticket",
+                                "/organiser", "/organiser/dashboard", "/organiser/new",
+                                "/organiser/events/*", "/organiser/events/*/edit", "/health").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(

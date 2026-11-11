@@ -2,3 +2,6 @@
 .env
 .idea/
 *.iml
+
+# Generated full-stack hosting assets
+app/src/main/resources/static/
