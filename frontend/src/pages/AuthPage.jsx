@@ -57,6 +57,28 @@ export function AuthPage() {
             </button>
           </div>
           <AuthForm key={mode} mode={mode} onSubmit={handleSubmit} />
+          <section className="demo-accounts" aria-labelledby="demo-accounts-heading">
+            <p className="eyebrow">EXPLORE THE LIVE DEMO</p>
+            <h2 id="demo-accounts-heading">Try either workspace</h2>
+            <p>No sign-up needed. Copy a demo email and password into the login form above.</p>
+            <div className="demo-account">
+              <h3>Organiser</h3>
+              <p>Create events, configure venues and manage registration.</p>
+              <dl>
+                <dt>Email / ID</dt><dd><code>committee.demo@uni.sydney.edu.au</code></dd>
+                <dt>Password</dt><dd><code>OrganiserDemo1!</code></dd>
+              </dl>
+            </div>
+            <div className="demo-account">
+              <h3>Attendee</h3>
+              <p>Discover events, try mock checkout and view your tickets.</p>
+              <dl>
+                <dt>Email / ID</dt><dd><code>attendee.demo@uni.sydney.edu.au</code></dd>
+                <dt>Password</dt><dd><code>TixoraDemo3!</code></dd>
+              </dl>
+            </div>
+            <p className="demo-account-note">Shared demo accounts · use fictional data only. Other visitors can change these records. Payments are simulated; no money is charged.</p>
+          </section>
         </div>
       </main>
     </div>

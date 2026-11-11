@@ -2,7 +2,7 @@
 
 **From an organiser's first draft to an attendee's assigned seat.**
 
-[**Open the interactive demo →**](https://tixora-live.onrender.com/) · [My contribution](#my-contribution--ryoji-kondo) · [Run the full application](#run-the-full-application) · [Verification](#verification)
+[**Open the live application →**](https://tixora-live.onrender.com/) · [My contribution](#my-contribution--ryoji-kondo) · [Run the full application](#run-the-full-application) · [Verification](#verification)
 
 Tixora is a University of Sydney team project built with **Java 17, Spring Boot, React and MySQL**. It connects event discovery, owner-managed publishing, simulated checkout and deferred group seating in one workflow.
 
@@ -19,14 +19,16 @@ The university version uses MySQL; this free personal deployment uses TiDB, and
 that hosting difference is explicit.
 
 Render's free server sleeps when inactive. The first request can take a minute or
-more to wake it; leave the page open while it starts.
+more to wake it; leave the page open while it starts. Allow around 1–2 minutes
+on a cold start. Both demo accounts and passwords are also displayed directly
+on the [login screen](https://tixora-live.onrender.com/auth).
 
 | Workspace | Fictional demo login | Password |
 | --- | --- | --- |
 | Organiser | `committee.demo@uni.sydney.edu.au` | `OrganiserDemo1!` |
 | Attendee | `attendee.demo@uni.sydney.edu.au` | `TixoraDemo3!` |
 
-1. Sign in as the organiser and create an event with a future date.
+1. Sign in as the organiser, open **Organiser dashboard**, and create an event with a future date.
 2. Configure a venue, save the draft and publish it. Venue maps are illustrative
    software fixtures, not verified physical seating plans.
 3. Sign out and sign in as the attendee. Book the event with a simulated checkout.
@@ -36,6 +38,19 @@ more to wake it; leave the page open while it starts.
 Shared demo accounts and their fictional records can be changed by other visitors.
 Use fictional data only. No real money is charged. Your own student test account
 can also be created through the existing registration form.
+
+## Live deployment verification — 12 November 2026
+
+Verified against the public React + Spring Boot + TiDB deployment:
+
+- Organiser and attendee login through the real authentication API.
+- An event retained across a service redeployment, with saved venue data read back through the real API.
+- Three complete journeys: FRONT assigned seating, general admission, and an Everest campus template.
+- Draft creation, venue save, publication, mock checkout, deferred assignment, registration closure and successful-checkout retry after closure.
+- Final tickets, anonymous CSV and printable HTML; no attendee emails in either export and no reusable group join code in the printable plan.
+- Direct page links load correctly; unauthenticated access to the private bookings API returns HTTP 401.
+
+Personal-hosting regression checks: **5 backend tests passed**, including row-lock SQL generation and closure/checkout concurrency; **95 frontend tests passed** and the production build succeeded. These checks complement the dated team baseline below. TiDB 8.5.3 requires a [hosting-specific dialect](app/src/main/java/com/ooaf/eventticketing/config/PublicTiDBDialect.java) that preserves `FOR UPDATE` locking while omitting its unsupported alias clause.
 
 ## My contribution — Ryoji Kondo
 

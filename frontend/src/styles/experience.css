@@ -138,3 +138,17 @@ button, a, input, select, textarea { touch-action: manipulation; }
 .map-legend { font-size: .72rem; color: var(--ink-soft); line-height: 1.6; margin-top: 24px; }.lifecycle-actions { border-top: 1px solid var(--line); padding-top: 20px; margin-top: 25px; }.assigned-seat { font-size: clamp(2rem, 4vw, 3.8rem); letter-spacing: -.05em; margin: 10px 0 25px; }
 @media (max-width: 760px) { .management-stats { grid-template-columns: 1fr; gap: 10px; }.management-stats > div { padding: 16px; }.management-stats small { margin-bottom: 5px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+/* Public fixtures for the personal portfolio deployment. */
+.demo-accounts { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
+.demo-accounts h2 { margin: 8px 0; font-size: 1.25rem; }
+.demo-accounts > p, .demo-account p { font-size: .85rem; color: var(--ink-soft); line-height: 1.6; }
+.demo-accounts .eyebrow { font-size: .65rem; }
+.demo-account { margin: 14px 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.demo-account h3 { font-size: 1rem; margin: 0 0 4px; }
+.demo-account p { margin: 0 0 12px; }
+.demo-account dl { margin: 0; }
+.demo-account dt { margin-top: 8px; color: var(--ink-soft); font-size: .7rem; font-weight: 600; }
+.demo-account dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.demo-account code { font-size: .8rem; user-select: all; }
+.demo-accounts .demo-account-note { font-size: .75rem; margin-bottom: 0; }

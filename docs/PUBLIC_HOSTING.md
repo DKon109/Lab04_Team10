@@ -1,15 +1,30 @@
 # Personal full-stack hosting
 
 This deployment runs the existing React application, Spring Boot controllers,
-services, authentication and allocation code, and an external MySQL database.
+services, authentication and allocation code, and an external TiDB database using the MySQL protocol.
 It is separate from the university repository. The previous browser simulation
 is not the application deployed by the root Dockerfile.
+
+## Live deployment
+
+Public URL: https://tixora-live.onrender.com/ (Render Free, Singapore).
+The former GitHub Pages demo URL redirects to this real application.
+On 12 November 2026, live HTTP checks passed for FRONT, general admission and
+Everest campus maps through booking, closure, retry, allocation, tickets and
+anonymous CSV/print output. An event from before the redeployment was retained.
+The login page displays the two fictional shared demo credentials below.
+
+TiDB 8.5.3 does not accept aliases in Hibernate's `FOR UPDATE OF` clause.
+`PublicTiDBDialect`, enabled only in `public-demo`, omits that clause while retaining
+pessimistic `FOR UPDATE` locking. Regression verification passed 5 backend tests
+covering the SQL, hosting routes/authentication and checkout/closure concurrency.
+No university source or database was changed.
 
 ## Infrastructure
 
 - Render free Docker web service, configured by `render.yaml`.
-- A dedicated MySQL database, or TiDB Cloud Starter (MySQL-compatible) after
-  compatibility verification, retained separately from the web container.
+- TiDB Cloud Starter (MySQL-compatible), dedicated instance `tixora-portfolio`
+  in Singapore with a $0 monthly spending limit, retained separately from the web container.
   Aiven stopped new free MySQL services on 6 November 2026; its free tier is
   therefore not an option for this new deployment. No in-memory substitute is used.
 - React is compiled into Spring's static resources. All API requests use the same
