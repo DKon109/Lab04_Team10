@@ -56,7 +56,7 @@ payments are taken. The normal registration flow remains available.
    The owner must complete new-account terms and password setup. Select a free
    instance without a payment method or paid upgrade; validate MySQL compatibility
    with the real application before advertising the deployment as live.
-2. Create the Docker service from `DKon109/Lab04_Team10` and supply the dedicated
+2. Create the Docker service from `DKon109/Tixora` and supply the dedicated
    database's connection settings. Select the free plan explicitly.
 3. Verify `/health`, log in through `/auth`, load real event API data, create a
    draft, save a venue, publish, book as attendee, close and allocate as organiser,

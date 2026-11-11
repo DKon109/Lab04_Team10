@@ -120,8 +120,8 @@ See [final acceptance](docs/FINAL_ACCEPTANCE.md) for environments, commands, tim
 With Docker Desktop running, from the repository root:
 
 ```bash
-git clone https://github.com/DKon109/Lab04_Team10.git
-cd Lab04_Team10
+git clone https://github.com/DKon109/Tixora.git
+cd Tixora
 docker compose up --build -d
 ```
 
