@@ -1,4 +1,4 @@
-name: Publish portfolio demo
+name: Verify frontend and publish live-app link
 on:
   push:
     branches: [main]
@@ -26,13 +26,10 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
-        env:
-          VITE_PORTFOLIO_DEMO: 'true'
-          VITE_PUBLIC_BASE: /Lab04_Team10/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend/dist
+          path: public-redirect
   deploy:
     needs: build
     runs-on: ubuntu-latest

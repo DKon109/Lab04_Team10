@@ -2,23 +2,40 @@
 
 **From an organiser's first draft to an attendee's assigned seat.**
 
-[**Open the interactive demo →**](https://dkon109.github.io/Lab04_Team10/) · [My contribution](#my-contribution--ryoji-kondo) · [Run the full application](#run-the-full-application) · [Verification](#verification)
+[**Open the interactive demo →**](https://tixora-live.onrender.com/) · [My contribution](#my-contribution--ryoji-kondo) · [Run the full application](#run-the-full-application) · [Verification](#verification)
 
 Tixora is a University of Sydney team project built with **Java 17, Spring Boot, React and MySQL**. It connects event discovery, owner-managed publishing, simulated checkout and deferred group seating in one workflow.
 
 My work focused on the rules behind that experience: **who can change an event, when it can be published, which venue data is valid, and whether bookings and seating survive transactions correctly.**
 
-## Try it in two minutes
+## Try the live application
 
-The [free public preview](https://dkon109.github.io/Lab04_Team10/) opens without a backend cold start or account:
+[**Open Tixora →**](https://tixora-live.onrender.com/)
 
-1. In **Organiser**, try publishing the draft before providing a venue. Inspect the validation message.
-2. Apply the demo venue and publish. Switch to **Attendee** to simulate successful or declined checkout.
-3. Create a few fictional bookings, optionally requesting an accessible position.
-4. Return to **Organiser**, close registration and run the illustrative assignment. A new booking attempt is now rejected.
-5. Open **Tickets** to inspect seat highlights and download an anonymous CSV. Reset the demo to start again.
+This deployment runs the **original React interface and real Spring Boot API**.
+Data is retained in a dedicated **TiDB Cloud Starter database (MySQL-compatible)**,
+using the existing MySQL JDBC driver and JPA model. It is not a browser simulation.
+The university version uses MySQL; this free personal deployment uses TiDB, and
+that hosting difference is explicit.
 
-**Preview boundaries:** this is a browser-only, interactive demonstration with fictional records stored in localStorage. It does not run Spring Security, MySQL, real authentication or the team's allocation algorithm. Its simple accessible-first assignment illustrates the flow, not backend group optimisation. All fictional tickets can be inspected in the preview; the full application enforces ticket ownership. No money is charged. GitHub Pages provides static hosting without a sleeping API; availability remains subject to the hosting service.
+Render's free server sleeps when inactive. The first request can take a minute or
+more to wake it; leave the page open while it starts.
+
+| Workspace | Fictional demo login | Password |
+| --- | --- | --- |
+| Organiser | `committee.demo@uni.sydney.edu.au` | `OrganiserDemo1!` |
+| Attendee | `attendee.demo@uni.sydney.edu.au` | `TixoraDemo3!` |
+
+1. Sign in as the organiser and create an event with a future date.
+2. Configure a venue, save the draft and publish it. Venue maps are illustrative
+   software fixtures, not verified physical seating plans.
+3. Sign out and sign in as the attendee. Book the event with a simulated checkout.
+4. Return as organiser, close registration and run allocation.
+5. Return as attendee to view the private ticket and highlighted assigned seat.
+
+Shared demo accounts and their fictional records can be changed by other visitors.
+Use fictional data only. No real money is charged. Your own student test account
+can also be created through the existing registration form.
 
 ## My contribution — Ryoji Kondo
 
@@ -32,9 +49,9 @@ This is a five-person team project. The table distinguishes my implementation an
 | Configurable external layouts | Front-stage generator and external layout families integrated with the shared seating-map contract | [FrontStageTemplateService](app/src/main/java/com/ooaf/eventticketing/service/FrontStageTemplateService.java), [ExternalVenueTemplateService](app/src/main/java/com/ooaf/eventticketing/service/ExternalVenueTemplateService.java) |
 | Transaction and concurrency verification | Test closure-first versus checkout-first outcomes, preserve successful bookings, and verify saved venue data across transactions | [RegistrationClosureConcurrencyTest](app/src/test/java/com/ooaf/eventticketing/controller/RegistrationClosureConcurrencyTest.java), [VenueTemplatePersistenceTest](app/src/test/java/com/ooaf/eventticketing/controller/VenueTemplatePersistenceTest.java), [GeneralAdmissionPersistenceTest](app/src/test/java/com/ooaf/eventticketing/controller/GeneralAdmissionPersistenceTest.java) |
 | Integration and handoff | Document API contracts; verify campus journeys, tickets, CSV/print consistency and invalid-update preservation | [SeatingIntegrationTest](app/src/test/java/com/ooaf/eventticketing/controller/SeatingIntegrationTest.java), [backend handoff](docs/BACKEND_HANDOFF.md) |
-| Personal portfolio edition | This README and the always-available browser preview | [PortfolioDemo](frontend/src/PortfolioDemo.jsx) |
+| Personal portfolio edition | This README and full-stack hosting configuration | [Dockerfile](Dockerfile), [hosting notes](docs/PUBLIC_HOSTING.md) |
 
-**Team attribution:** Rafly owned allocation algorithms; Aadi owned organiser/seating interfaces; Tejas owned attendee interfaces and overall integration; Sathish owned bookings, mock payments and database coordination. Their contributions and history are retained. The public preview reuses the team's visual styles and seat-map component. The team's complete test totals below are not a claim that I authored every test or feature.
+**Team attribution:** Rafly owned allocation algorithms; Aadi owned organiser/seating interfaces; Tejas owned attendee interfaces and overall integration; Sathish owned bookings, mock payments and database coordination. Their contributions and history are retained. The deployed application retains the team's original frontend workflows and visual design. The team's complete test totals below are not a claim that I authored every test or feature.
 
 ## The full application
 
@@ -81,7 +98,7 @@ Recorded full-application baseline, **2 November 2026**:
 | Frontend production build | Passed |
 | Proposal-scale allocation benchmarks | 20 cases passed the ten-second threshold in the documented environment |
 
-See [final acceptance](docs/FINAL_ACCEPTANCE.md) for environments, commands, timing boundaries and limitations. These are dated baseline results, not a claim of continuous verification on every later revision. Larger campus simulations are outside the 300-attendee timing guarantee. The portfolio preview has its own checks and is separate from those backend results.
+See [final acceptance](docs/FINAL_ACCEPTANCE.md) for environments, commands, timing boundaries and limitations. These are dated baseline results, not a claim of continuous verification on every later revision. Larger campus simulations are outside the 300-attendee timing guarantee. Personal-hosting checks are recorded separately in [hosting notes](docs/PUBLIC_HOSTING.md).
 
 ## Run the full application
 
@@ -120,15 +137,9 @@ TEST_DB_USERNAME=root TEST_DB_PASSWORD='your-test-password' ./mvnw test
 
 Test configuration may recreate tables. Use a test database, not the application database.
 
-Browser preview locally:
-
-```bash
-cd frontend
-npm ci
-VITE_PORTFOLIO_DEMO=true npm run dev
-```
-
-The normal build continues to use the real API. The Pages workflow explicitly enables the portfolio preview at build time.
+Personal full-stack hosting: see [PUBLIC_HOSTING.md](docs/PUBLIC_HOSTING.md). The root
+Dockerfile builds the real React app into the Spring Boot server, so pages, API
+calls and print downloads share one origin.
 
 ## Scope and limitations
 
