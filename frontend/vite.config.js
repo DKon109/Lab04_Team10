@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 // /api is proxied to the Spring Boot backend because it has no CORS config yet.
 export default defineConfig({
   plugins: [react()],
+  base: process.env.VITE_PUBLIC_BASE || '/',
   server: {
     port: 5173,
     proxy: {

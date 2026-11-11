@@ -1,161 +1,143 @@
-# Tixora
+# Tixora — Event Management & Seating
 
-> **Final integration (2 November 2026):** See [final acceptance and run commands](docs/FINAL_ACCEPTANCE.md) for the proposal traceability matrix, current validation and remaining physical/browser acceptance. [Tejas's report section and evidence](docs/FINAL_TEJAS_REPORT.md) accompanies the final integration branch. PRs #24 and #25 are merged; earlier Sprint 0/1 descriptions below are historical. Run `scripts/smoke-final.ps1` against the local Docker build to exercise every supported venue family through checkout, allocation and outputs.
+**From an organiser's first draft to an attendee's assigned seat.**
 
-> **Sprint 3 review branch (12 October 2026):** responsive attendee experience, mock checkout, organiser lifecycle, persisted seating/allocation, private seat-map tickets and anonymous export are now integrated. Start with [Sprint 3 handoff and run commands](docs/SPRINT3_TEJAS.md), [checkout API](docs/MOCK_CHECKOUT_API.md), and [seating API](docs/SEATING_API.md). Campus layouts remain explicitly unverified demos. The Sprint 0/1 descriptions below are historical, not the current implementation contract.
+[**Open the interactive demo →**](https://dkon109.github.io/Lab04_Team10/) · [My contribution](#my-contribution--ryoji-kondo) · [Run the full application](#run-the-full-application) · [Verification](#verification)
 
-### Campus ticketing made simpler, fairer and more accessible
+Tixora is a University of Sydney team project built with **Java 17, Spring Boot, React and MySQL**. It connects event discovery, owner-managed publishing, simulated checkout and deferred group seating in one workflow.
 
-**ELEC5619 – Object Oriented Application Frameworks**  
-**Lab 4 | Group 10 | Sprint 0**
+My work focused on the rules behind that experience: **who can change an event, when it can be published, which venue data is valid, and whether bookings and seating survive transactions correctly.**
 
-> **Sprint 1 status:** the repo now contains a working slice — registration/login
-> (`app/`, Spring Boot + MySQL), an event-discovery feed with likes and a
-> personalised For You tab, and an organiser dashboard for posting events
-> (`frontend/`, React + Vite). Seating, payments, QR tickets and check-in below
-> are the Sprint 0 proposal direction and are **not built yet** (proposal not
-> final until 13 Sep 2026). See [`frontend/README.md`](frontend/README.md) to
-> run it and [`INTEGRATION_NOTES.md`](INTEGRATION_NOTES.md) for the current
-> API contract and gaps.
+## Try it in two minutes
 
-See [Authentication API](AUTH_API.md) for registration, login, current-user endpoints, request/response examples, and authentication errors.
+The [free public preview](https://dkon109.github.io/Lab04_Team10/) opens without a backend cold start or account:
 
-## Run with Docker
+1. In **Organiser**, try publishing the draft before providing a venue. Inspect the validation message.
+2. Apply the demo venue and publish. Switch to **Attendee** to simulate successful or declined checkout.
+3. Create a few fictional bookings, optionally requesting an accessible position.
+4. Return to **Organiser**, close registration and run the illustrative assignment. A new booking attempt is now rejected.
+5. Open **Tickets** to inspect seat highlights and download an anonymous CSV. Reset the demo to start again.
 
-The complete application can run with Docker Compose, including MySQL:
+**Preview boundaries:** this is a browser-only, interactive demonstration with fictional records stored in localStorage. It does not run Spring Security, MySQL, real authentication or the team's allocation algorithm. Its simple accessible-first assignment illustrates the flow, not backend group optimisation. All fictional tickets can be inspected in the preview; the full application enforces ticket ownership. No money is charged. GitHub Pages provides static hosting without a sleeping API; availability remains subject to the hosting service.
 
-```bash
-cp .env.example .env       # optional: customise ports and credentials
-docker compose up --build
+## My contribution — Ryoji Kondo
+
+This is a five-person team project. The table distinguishes my implementation and verification from the system as a whole.
+
+| My responsibility | What I implemented or verified | Code / evidence |
+| --- | --- | --- |
+| Event ownership and lifecycle | Derive ownership from the authenticated organiser; restrict editing and status changes; separate draft creation from publication and closure | [EventService](app/src/main/java/com/ooaf/eventticketing/service/EventService.java), [OrganiserEventController](app/src/main/java/com/ooaf/eventticketing/controller/OrganiserEventController.java) |
+| Publication and public access rules | Reject invalid venue/capacity data; limit public discovery and likes to published events; validate seating prerequisites | [EventService](app/src/main/java/com/ooaf/eventticketing/service/EventService.java), [event API tests](app/src/test/java/com/ooaf/eventticketing/controller/LikesAndEventCreationApiTest.java) |
+| Campus venue templates | Everest, Reginald and York template generation, explicit demo assumptions and validation | [CampusVenueTemplateService](app/src/main/java/com/ooaf/eventticketing/service/CampusVenueTemplateService.java), [template tests](app/src/test/java/com/ooaf/eventticketing/service/CampusVenueTemplateServiceTest.java) |
+| Configurable external layouts | Front-stage generator and external layout families integrated with the shared seating-map contract | [FrontStageTemplateService](app/src/main/java/com/ooaf/eventticketing/service/FrontStageTemplateService.java), [ExternalVenueTemplateService](app/src/main/java/com/ooaf/eventticketing/service/ExternalVenueTemplateService.java) |
+| Transaction and concurrency verification | Test closure-first versus checkout-first outcomes, preserve successful bookings, and verify saved venue data across transactions | [RegistrationClosureConcurrencyTest](app/src/test/java/com/ooaf/eventticketing/controller/RegistrationClosureConcurrencyTest.java), [VenueTemplatePersistenceTest](app/src/test/java/com/ooaf/eventticketing/controller/VenueTemplatePersistenceTest.java), [GeneralAdmissionPersistenceTest](app/src/test/java/com/ooaf/eventticketing/controller/GeneralAdmissionPersistenceTest.java) |
+| Integration and handoff | Document API contracts; verify campus journeys, tickets, CSV/print consistency and invalid-update preservation | [SeatingIntegrationTest](app/src/test/java/com/ooaf/eventticketing/controller/SeatingIntegrationTest.java), [backend handoff](docs/BACKEND_HANDOFF.md) |
+| Personal portfolio edition | This README and the always-available browser preview | [PortfolioDemo](frontend/src/PortfolioDemo.jsx) |
+
+**Team attribution:** Rafly owned allocation algorithms; Aadi owned organiser/seating interfaces; Tejas owned attendee interfaces and overall integration; Sathish owned bookings, mock payments and database coordination. Their contributions and history are retained. The public preview reuses the team's visual styles and seat-map component. The team's complete test totals below are not a claim that I authored every test or feature.
+
+## The full application
+
+```mermaid
+flowchart LR
+    O[Organiser] --> UI[React interface]
+    A[Attendee] --> UI
+    UI --> API[Spring Boot REST API]
+    API --> RULES[Security, ownership and lifecycle rules]
+    RULES --> VENUE[Venue maps and validation]
+    RULES --> BOOK[Bookings and mock checkout]
+    BOOK --> ALLOC[Deferred seat allocation]
+    VENUE --> ALLOC
+    ALLOC --> OUT[Private tickets, metrics, CSV and printable plans]
+    RULES --> DB[(MySQL / JPA)]
+    BOOK --> DB
+    ALLOC --> DB
 ```
 
-Open <http://localhost:5173>. The frontend proxies `/api` requests to the
-backend inside the Compose network. The backend is also available directly at
-<http://localhost:8080> for API development.
+- **Discover:** browse Sydney/USYD events, search, filter, like and see rule-based recommendations.
+- **Organise:** create and edit drafts, configure venues, publish and close registration.
+- **Book:** reserve an individual place or join a private event group through simulated checkout.
+- **Assign:** allocate after closure, considering groups, accessibility, blocked positions and layout constraints.
+- **Inspect:** view private tickets, allocation metrics, anonymous CSV and printable seating plans.
 
-Stop the containers with `docker compose down`. Add `--volumes` only when you
-also want to delete the local MySQL data volume.
+### Engineering decisions I can explain
 
-## Overview
+**Ownership comes from the session.** A caller cannot select another organiser as the owner by supplying an ID. Role and ownership checks protect state-changing operations.
 
-Tixora is a campus-first event ticketing and venue-entry platform built for university societies. It allows society committees to publish events, offer member and non-member tickets, manage allocated seating, take payments, issue QR e-tickets and monitor attendance through one system.
+**Publication is a state transition with prerequisites.** Incomplete drafts can exist, while public events must satisfy server-side venue, capacity and seating-mode requirements. Unnumbered venues require general admission unless temporary physical identifiers are confirmed.
 
-The platform supports the complete event journey: a society publishes an event, a student verifies their eligibility, finds suitable seats, completes payment, receives a QR ticket and checks in at the venue. Although initially designed for university societies, the platform could later support community organisations and other small event organisers.
+**Closing registration must cooperate with checkout.** Integration tests exercise both transaction orderings. A booking committed before closure is preserved; an identical successful checkout retry retrieves the existing outcome. Closure prevents new successful checkout.
 
-## Problem Statement
+**Persistence deserves a separate test.** Tests flush/reload state and use separate transactions to verify saved maps and tickets, rather than relying solely on objects already held in memory.
 
-University societies regularly organise balls, performances, conferences, competitions and networking events. However, general ticketing platforms do not always reflect the way campus events operate. Committees may need to manage society-member discounts, student eligibility, group seating, accessibility requirements and volunteer-run entry while using separate tools for ticket sales and attendance.
+## Verification
 
-This fragmented process can create inaccurate seating information, unclear ticket eligibility, unexpected fees, duplicated tickets and slow check-in. Students may also struggle to find adjacent seats for their group or identify accessible seating without contacting the organiser separately.
+Recorded full-application baseline, **2 November 2026**:
 
-Tixora addresses these problems through student and membership verification, transparent ticket categories, group-aware seat recommendations, temporary seat holds, accessible booking, hosted payments, single-use QR tickets and a society dashboard.
+| Check | Result |
+| --- | --- |
+| Backend full suite | 311 tests; zero failures, errors or skips |
+| Frontend suite | 95 tests across 15 files; all passed |
+| Frontend production build | Passed |
+| Proposal-scale allocation benchmarks | 20 cases passed the ten-second threshold in the documented environment |
 
-## Target Users
+See [final acceptance](docs/FINAL_ACCEPTANCE.md) for environments, commands, timing boundaries and limitations. These are dated baseline results, not a claim of continuous verification on every later revision. Larger campus simulations are outside the 300-attendee timing guarantee. The portfolio preview has its own checks and is separate from those backend results.
 
-- **Students and guests:** Discover society events, verify eligibility, find seats and purchase tickets.
-- **Society committee members:** Create events, manage pricing and seating, and monitor sales.
-- **Event volunteers:** Validate tickets and check attendees into the event.
+## Run the full application
 
-## Key Requirements
+With Docker Desktop running, from the repository root:
 
-| Identified problem | Tixora requirement |
-|---|---|
-| Societies offer different prices to members, students and guests | Events support member, student and general-admission ticket categories |
-| Committees need to confirm ticket eligibility | Students verify their university email, while societies can maintain a simple member list or code |
-| Groups struggle to find adjacent seats | The Smart Seat Finder recommends suitable contiguous seats |
-| Customers may lose seats during checkout | Selected seats receive a time-limited hold before payment |
-| Two customers may attempt to purchase the same seat | Short database transactions prevent confirmed double-bookings |
-| Visual seat maps can be inaccessible | A keyboard-operable seat list and accessibility filters accompany the visual map |
-| Extra fees may appear late in checkout | The complete payable price is displayed before payment |
-| QR codes can be copied or reused | Tickets are validated against the server and can only be checked in once |
-| Committees use separate sales and entry records | A society dashboard combines sales, capacity and attendance information |
+```bash
+git clone https://github.com/DKon109/Lab04_Team10.git
+cd Lab04_Team10
+docker compose up --build -d
+```
 
-## Minimum Viable Product
+Open **http://localhost:5173**. The API runs on port 8080. Compose starts MySQL and retains application data in a named volume.
 
-### Society and Event Management
+For the complete seeded acceptance journey, use the documented [PowerShell smoke script](scripts/smoke-final.ps1) and [final acceptance instructions](docs/FINAL_ACCEPTANCE.md). That script creates labelled fictional fixtures and prints ticket URLs.
 
-- Committee members can create a society profile and publish events.
-- Events contain a title, description, date, time, venue, entry conditions and ticket categories.
-- Organisers select a predefined seating layout and label standard, accessible, companion, restricted-view or unavailable seats.
-- Role-based access restricts event management and check-in functions.
+To stop: `docker compose down`.
 
-### Student Eligibility and Ticket Categories
+### Run checks
 
-- Customers can create an account and verify a university email address.
-- Organisers can offer separate society-member, university-student and guest tickets.
-- Society membership can be confirmed through an organiser-managed member list or event membership code.
-- The applicable ticket price and eligibility conditions are shown before seat selection.
+Frontend (Node 22.12+):
 
-The MVP will not connect directly to a university identity system. This avoids depending on restricted university infrastructure while still demonstrating eligibility management.
+```bash
+cd frontend
+npm ci
+npm test
+npm run build
+```
 
-### Accessible Seat Selection and Smart Seat Finder
+Backend (Java 17+ and a **dedicated disposable MySQL test database**):
 
-- Customers can select seats through a visual map or an equivalent keyboard-operable list.
-- Filters identify accessible, companion, restricted-view and price-appropriate seats.
-- The Smart Seat Finder accepts group size, budget, preferred section and accessibility needs.
-- It ranks available adjacent seats according to group fit, accessibility match, price and section preference while avoiding unnecessary isolated single seats.
+```bash
+cd app
+TEST_DB_URL='jdbc:mysql://localhost:3306/tixora_test?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC' \
+TEST_DB_USERNAME=root TEST_DB_PASSWORD='your-test-password' ./mvnw test
+```
 
-The Smart Seat Finder uses a transparent rules-based algorithm rather than artificial intelligence, keeping the feature explainable and feasible within the semester.
+Test configuration may recreate tables. Use a test database, not the application database.
 
-### Temporary Seat Holds and Live Availability
+Browser preview locally:
 
-- Selecting seats creates an approximately five-minute hold and checkout timer.
-- Held seats become unavailable to other customers.
-- Expired holds and failed checkouts automatically release their seats.
-- Server-Sent Events update connected seat maps when seats are held, released or sold.
+```bash
+cd frontend
+npm ci
+VITE_PORTFOLIO_DEMO=true npm run dev
+```
 
-The central seat lifecycle is:
+The normal build continues to use the real API. The Pages workflow explicitly enables the portfolio preview at build time.
 
-`AVAILABLE → HELD → SOLD → CHECKED_IN`
+## Scope and limitations
 
-### Transparent Payment and QR Tickets
+- Payments are simulated; there are no real charges, refunds or payment-provider integration.
+- Campus templates derive from published-plan information and agreed demonstration assumptions. Physical geometry, installed identifiers and accessible positions are not verified for real event operation.
+- Allocation is a constrained heuristic, not a claim of global optimality.
+- There is no implemented QR door-scanning/check-in or university identity integration.
+- Team project history is preserved; this personal repository and portfolio edition are maintained separately from the university repository.
 
-- The complete ticket price, including any required fee, remains visible throughout checkout.
-- Payment uses a payment provider’s hosted sandbox checkout, so Tixora does not store complete card information.
-- The backend confirms payment before creating a unique QR ticket for each purchased seat.
-- Repeated payment notifications cannot create duplicate orders or tickets.
+## Further technical reading
 
-### Volunteer Check-In and Society Dashboard
-
-- Authorised volunteers can scan a QR code or enter a ticket number manually.
-- The server identifies valid, already-used, cancelled, wrong-event and invalid tickets.
-- A successfully checked-in ticket cannot be reused.
-- Committee members can view ticket sales, remaining capacity, ticket categories and attendance.
-
-## High-Level Goals
-
-1. Give university societies one platform for ticket sales, seating and event entry.
-2. Support member, student and guest ticketing without requiring university-system integration.
-3. Make group and accessible seat selection easier for students.
-4. Prevent confirmed double-bookings and repeated ticket use.
-5. Provide transparent pricing and a reliable purchase-to-check-in experience.
-6. Build a maintainable full-stack application using object-oriented design.
-
-## Scope
-
-The MVP will use predefined seating layouts, hosted sandbox payments and online check-in. Direct university single sign-on, advanced bot detection, virtual waiting rooms, automated refunds, ticket resale, a drag-and-drop venue editor, dynamic pricing and offline check-in synchronisation are outside the initial scope.
-
-Possible future features include an automatic waitlist, controlled ticket transfers, email or SMS delivery and support for community organisations.
-
-## Technology Stack
-
-- **Front end:** React
-- **Back end:** Java and Spring Boot
-- **Database:** MySQL with Spring Data JPA
-- **Security:** Spring Security
-- **Live updates:** Server-Sent Events
-- **Payment:** Hosted checkout in sandbox mode
-- **E-tickets:** QR generation and server-side validation
-- **Collaboration:** GitHub and Jira
-
-## MVP Success Criteria
-
-The MVP will be successful when:
-
-1. A society can publish an event with ticket categories and a predefined seating layout.
-2. A student can verify eligibility and purchase the correct ticket type.
-3. A customer can find suitable seats manually or through the Smart Seat Finder.
-4. Selected seats are temporarily held without confirmed double-booking.
-5. Successful sandbox payment creates each QR ticket exactly once.
-6. Volunteers can validate tickets and reject repeated use.
-7. The society dashboard accurately displays sales, capacity and attendance.
+[Backend handoff](docs/BACKEND_HANDOFF.md) · [Authentication](AUTH_API.md) · [Event integration](INTEGRATION_NOTES.md) · [Managed seating maps](docs/SEATING_MAP_MANAGEMENT_API.md) · [Allocation and outputs](docs/SEAT_ALLOCATION_AND_OUTPUTS.md) · [Final acceptance](docs/FINAL_ACCEPTANCE.md)
