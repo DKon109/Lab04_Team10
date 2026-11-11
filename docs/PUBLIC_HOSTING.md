@@ -8,8 +8,10 @@ is not the application deployed by the root Dockerfile.
 ## Infrastructure
 
 - Render free Docker web service, configured by `render.yaml`.
-- Aiven free MySQL (or an existing compatible MySQL service), retained separately
-  from the web container. Do not use an in-memory substitute for this deployment.
+- A dedicated MySQL database, or TiDB Cloud Starter (MySQL-compatible) after
+  compatibility verification, retained separately from the web container.
+  Aiven stopped new free MySQL services on 6 November 2026; its free tier is
+  therefore not an option for this new deployment. No in-memory substitute is used.
 - React is compiled into Spring's static resources. All API requests use the same
   origin, including direct print downloads. React routes forward to index.html;
   `/api/**` retains the existing role, token and ownership checks.
@@ -34,8 +36,11 @@ payments are taken. The normal registration flow remains available.
 
 ## Deployment and verification
 
-1. Sign in to the personal Render account and provision a free MySQL database in
-   the personal Aiven account (new account terms must be accepted by the owner).
+1. Sign in to the personal Render account. Create a TiDB Cloud Starter free
+   instance in a separate personal project, or supply a dedicated MySQL service.
+   The owner must complete new-account terms and password setup. Select a free
+   instance without a payment method or paid upgrade; validate MySQL compatibility
+   with the real application before advertising the deployment as live.
 2. Create the Docker service from `DKon109/Lab04_Team10` and supply the dedicated
    database's connection settings. Select the free plan explicitly.
 3. Verify `/health`, log in through `/auth`, load real event API data, create a
